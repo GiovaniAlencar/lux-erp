@@ -185,6 +185,7 @@
     }
     $badgeTwPedido = [
         'aguardando_confirmacao' => $luxBadgeNeutral,
+        'em_elaboracao' => $luxBadgeNeutral,
         'confirmado' => $luxBadgeNeutral,
         'em_separacao' => $luxBadgeNeutral,
         'separado' => $luxBadgeNeutral,
@@ -201,6 +202,7 @@
     ];
     $lucidePedido = [
         'aguardando_confirmacao' => 'clock',
+        'em_elaboracao' => 'clock',
         'confirmado' => 'circle-check',
         'em_separacao' => 'package',
         'separado' => 'package-check',
@@ -360,8 +362,8 @@
                                 $totalLinha = $item->valor_total - $item->desconto + $item->acrescimo + $item->frete;
                                 $stPed = $item->status_pedido ?? 'aguardando_confirmacao';
                                 $stPag = $item->status_pagamento ?? 'pendente';
-                                $pedidoClicavel = !$item->fechada_caixa && in_array($stPed, ['aguardando_confirmacao', 'em_separacao', 'alteracao_pendente'], true);
-                                $acaoPedido = ['aguardando_confirmacao' => 'confirmar_pedido', 'em_separacao' => 'marcar_separado', 'alteracao_pendente' => 'confirmar_alteracao'][$stPed] ?? '';
+                                $pedidoClicavel = !$item->fechada_caixa && in_array($stPed, ['aguardando_confirmacao', 'em_elaboracao', 'em_separacao', 'alteracao_pendente'], true);
+                                $acaoPedido = ['aguardando_confirmacao' => 'confirmar_pedido', 'em_elaboracao' => 'confirmar_pedido', 'em_separacao' => 'marcar_separado', 'alteracao_pendente' => 'confirmar_alteracao'][$stPed] ?? '';
                                 $pagClicavel = !$item->fechada_caixa && $stPag === 'pendente';
                                 $clsPed = $badgeTwPedido[$stPed] ?? $luxBadgeNeutral;
                                 $clsPag = $badgeTwPagamento[$stPag] ?? $luxBadgeNeutral;
@@ -704,6 +706,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
     const IcoPed = {
         aguardando_confirmacao: 'clock',
+        em_elaboracao: 'clock',
         confirmado: 'circle-check',
         em_separacao: 'package',
         separado: 'package-check',
@@ -726,7 +729,7 @@ document.addEventListener('DOMContentLoaded', function(){
     }
 
     function pedidoAcaoPorStatus(st) {
-        const m = { aguardando_confirmacao: 'confirmar_pedido', em_separacao: 'marcar_separado', alteracao_pendente: 'confirmar_alteracao' };
+        const m = { aguardando_confirmacao: 'confirmar_pedido', em_elaboracao: 'confirmar_pedido', em_separacao: 'marcar_separado', alteracao_pendente: 'confirmar_alteracao' };
         return m[st] || '';
     }
 
@@ -748,7 +751,7 @@ document.addEventListener('DOMContentLoaded', function(){
         if (!td) return;
         const label = WF.labelsPed[statusPedido] || statusPedido;
         const cls = WF.clsPed[statusPedido] || WF_FALLBACK_BADGE;
-        const clicavel = !fech && ['aguardando_confirmacao', 'em_separacao', 'alteracao_pendente'].indexOf(statusPedido) !== -1;
+        const clicavel = !fech && ['aguardando_confirmacao', 'em_elaboracao', 'em_separacao', 'alteracao_pendente'].indexOf(statusPedido) !== -1;
         const acao = pedidoAcaoPorStatus(statusPedido);
         const ico = iconPedHtml(statusPedido);
         if (clicavel) {

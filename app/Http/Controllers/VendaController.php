@@ -143,8 +143,10 @@ class VendaController extends Controller
             ->first();
         $contigencia = $this->getContigencia(request()->empresa_id);
 
+        // em_elaboracao: legado do SQL 04; preferir rodar 06_normalize_vendas_status_pedido_workflow.sql em produção.
         $labelStatusPedidoVenda = [
             'aguardando_confirmacao' => 'Aguardando confirmação',
+            'em_elaboracao' => 'Aguardando confirmação',
             'confirmado' => 'Confirmado',
             'em_separacao' => 'Em separação',
             'separado' => 'Separado',
@@ -820,8 +822,12 @@ class VendaController extends Controller
             return redirect()->route('vendas.index');
         }
         try {
-            $this->revertStock($item->itens);
-            $item->delete();
+            DB::transaction(function () use ($item) {
+                $item->loadMissing('itens.produto');
+                $this->revertStock($item->itens);
+                $this->registrarMovimentacoesExclusaoVenda($item);
+                $item->delete();
+            });
             session()->flash("flash_sucesso", "Venda deletada!");
         } catch (\Exception $e) {
             session()->flash("flash_erro", "Algo deu errado: " . $e->getMessage());
@@ -1451,7 +1457,7 @@ class VendaController extends Controller
         }
         $acao = $request->acao;
         if ($acao === 'confirmar_pedido') {
-            if ($v->status_pedido !== 'aguardando_confirmacao') {
+            if (!in_array($v->status_pedido, ['aguardando_confirmacao', 'em_elaboracao'], true)) {
                 return response()->json(['message' => 'Transição inválida para esta venda.'], 400);
             }
             $v->status_pedido = 'confirmado';
@@ -1778,6 +1784,65 @@ class VendaController extends Controller
         }
 
         return rtrim(rtrim(number_format($q, 4, ',', ''), '0'), ',') ?: '0';
+    }
+
+    /**
+     * Após revertStock na exclusão da venda, registra estorno em alteracao_estoques (uma linha por produto).
+     */
+    private function registrarMovimentacoesExclusaoVenda(Venda $venda): void
+    {
+        $itens = $venda->itens;
+        if ($itens->isEmpty()) {
+            return;
+        }
+
+        $linhas = [];
+        foreach ($itens as $i) {
+            $linhas[] = [
+                'produto_id' => $i->produto_id,
+                'quantidade' => (float) __convert_value_bd($i->quantidade),
+                'nome' => optional($i->produto)->nome ?? ('Produto #' . $i->produto_id),
+                'valor_unit' => (float) __convert_value_bd($i->valor ?? 0),
+            ];
+        }
+
+        $agrupadoQ = $this->agruparQtdPorProdutoAuditoria($linhas);
+        $filialId = $venda->filial_id;
+
+        foreach ($agrupadoQ as $pid => $info) {
+            $q = (float) $info['quantidade'];
+            if (abs($q) < 0.0001) {
+                continue;
+            }
+            $pid = (int) $pid;
+
+            $qEst = Estoque::where('produto_id', $pid);
+            if ($filialId !== null && (int) $filialId > 0) {
+                $qEst->where('filial_id', $filialId);
+            }
+            $estoqueNovo = (float) ($qEst->value('quantidade') ?? 0);
+            $estoqueAnterior = $estoqueNovo - $q;
+
+            $nome = $info['nome'];
+            $obs = 'Exclusão venda #' . $venda->id . ' — ' . $this->nomeProdutoResumido($nome)
+                . ': +' . $this->fmtQtdAuditoria($q) . ' un. ('
+                . $this->fmtQtdAuditoria($estoqueAnterior) . ' → ' . $this->fmtQtdAuditoria($estoqueNovo) . ').';
+
+            AlteracaoEstoque::create([
+                'empresa_id' => $venda->empresa_id,
+                'usuario_id' => get_id_user(),
+                'produto_id' => $pid,
+                'quantidade' => $q,
+                'observacao' => mb_substr($obs, 0, 200),
+                'tipo' => '1',
+                'acao' => 'venda_exclusao_estorno',
+                'origem' => 'venda',
+                'origem_id' => $venda->id,
+                'pedido_id' => $venda->id,
+                'estoque_anterior' => $estoqueAnterior,
+                'estoque_novo' => $estoqueNovo,
+            ]);
+        }
     }
 
     /**

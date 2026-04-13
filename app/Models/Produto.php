@@ -687,6 +687,9 @@ class Produto extends Model
 				? 'Estorno (edição venda)'
 				: 'Ajuste venda (+)';
 			$row['valor'] = $this->resolverValorMovimentoEdicaoVenda($objeto);
+		} elseif ((string) ($objeto->acao ?? '') === 'venda_exclusao_estorno') {
+			$row['tipo'] = 'Exclusão venda';
+			$row['valor'] = $this->resolverValorMovimentoEdicaoVenda($objeto);
 		}
 	}
 
@@ -703,6 +706,8 @@ class Produto extends Model
 			$pri = 92;
 		} elseif ($acao === 'edicao_venda_saida') {
 			$pri = 91;
+		} elseif ($acao === 'venda_exclusao_estorno') {
+			$pri = 93;
 		} else {
 			$pri = 50;
 		}
@@ -1010,7 +1015,12 @@ class Produto extends Model
 			$tm = $row['tipo_model'] ?? '';
 
 			if ($tm === 'AlteracaoEstoque' || strpos((string)$row['tipo'], 'Alteração de Estoque') === 0) {
-				if (!empty($row['alteracao_acao']) && strpos((string) $row['alteracao_acao'], 'edicao_venda_') === 0) {
+				$acaoAlt = (string) ($row['alteracao_acao'] ?? '');
+				$detalheSoObservacao = $acaoAlt !== '' && (
+					strpos($acaoAlt, 'edicao_venda_') === 0
+					|| $acaoAlt === 'venda_exclusao_estorno'
+				);
+				if (!empty($row['alteracao_acao']) && $detalheSoObservacao) {
 					$row['linhas_detalhe'] = [trim((string) ($row['observacao'] ?? ''))];
 					$ea = $row['estoque_anterior'];
 					$en = $row['estoque_novo'];
