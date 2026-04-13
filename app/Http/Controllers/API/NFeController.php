@@ -216,6 +216,7 @@ class NFeController extends Controller
         if (!isset($nfe['erro'])) {
 
             $venda->estado_emissao = 'cancelado';
+            $venda->status_pedido = 'cancelada';
             $venda->valor_total = 0;
             $venda->save();
 

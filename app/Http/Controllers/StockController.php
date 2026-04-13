@@ -71,27 +71,40 @@ class StockController extends Controller
             ]);
 
             Apontamento::create($request->all());
+
+            $qtd = __convert_value_bd($request->quantidade);
+            $estoqueRow = Estoque::where('produto_id', $request->produto_id)
+                ->whereNull('filial_id')
+                ->first();
+            $estoqueAnterior = $estoqueRow ? (float) $estoqueRow->quantidade : 0;
+
+            $stockMove = new StockMove();
+            if ($request->tipo == 1) {
+                $stockMove->pluStock($request->produto_id, $qtd);
+            } else {
+                $stockMove->downStock($request->produto_id, $qtd);
+            }
+
+            $estoqueDepois = Estoque::where('produto_id', $request->produto_id)
+                ->whereNull('filial_id')
+                ->first();
+            $estoqueNovo = $estoqueDepois ? (float) $estoqueDepois->quantidade : 0;
+
             AlteracaoEstoque::create([
                 'empresa_id' => $request->empresa_id,
                 'usuario_id' => get_id_user(),
                 'produto_id' => $request->produto_id,
-                'quantidade' => __convert_value_bd($request->quantidade),
-                'observacao' => $request->observacao ?? '',
-                'tipo' => $request->tipo
+                'quantidade' => $qtd,
+                'observacao' => ($request->observacao ?? '') !== ''
+                    ? ($request->observacao ?? '')
+                    : 'Estoque anterior: ' . $estoqueAnterior . ' | Estoque novo: ' . $estoqueNovo,
+                'tipo' => $request->tipo,
+                'acao' => 'ajuste_manual',
+                'origem' => 'apontamento',
+                'origem_id' => null,
+                'estoque_anterior' => $estoqueAnterior,
+                'estoque_novo' => $estoqueNovo,
             ]);
-            if ($request->tipo == 1) {
-                $stockMove = new StockMove();
-                $stockMove->pluStock(
-                    $request->produto_id,
-                    __convert_value_bd($request->quantidade)
-                );
-            } else {
-                $stockMove = new StockMove();
-                $stockMove->downStock(
-                    $request->produto_id,
-                    __convert_value_bd($request->quantidade)
-                );
-            }
             session()->flash("flash_sucesso", "Apontamento com sucesso!");
         } catch (\Exception $e) {
             session()->flash("flash_erro", "Algo deu errado" . $e->getMessage());

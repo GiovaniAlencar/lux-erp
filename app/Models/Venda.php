@@ -16,7 +16,13 @@ class Venda extends Model
         'transportadora_id', 'sequencia_cce', 'tipo_pagamento', 'empresa_id',
         'pedido_ecommerce_id', 'bandeira_cartao', 'cnpj_cartao', 'cAut_cartao',
         'descricao_pag_outros', 'acrescimo', 'frete', 'data_entrega', 'pedido_nuvemshop_id',
-        'nSerie', 'data_emissao', 'filial_id'
+        'nSerie', 'data_emissao', 'filial_id', 'status_pedido', 'status_pagamento',
+        'fechada_caixa', 'fechada_em', 'fechada_por_usuario_id'
+    ];
+
+    protected $casts = [
+        'fechada_caixa' => 'boolean',
+        'fechada_em' => 'datetime',
     ];
 
     public function filial(){
@@ -73,6 +79,11 @@ class Venda extends Model
     public function itens()
     {
         return $this->hasMany(ItemVenda::class, 'venda_id', 'id');
+    }
+
+    public function auditorias()
+    {
+        return $this->hasMany(VendaAuditoria::class, 'venda_id', 'id');
     }
 
     public function referencias()

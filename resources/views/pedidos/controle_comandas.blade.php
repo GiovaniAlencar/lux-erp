@@ -45,6 +45,7 @@
                                         <th data-field="OrderID" class="datatable-cell datatable-cell-sort"><span style="width: 100px;">Comanda</span></th>
                                         <th data-field="OrderID" class="datatable-cell datatable-cell-sort"><span style="width: 100px;">Observação</span></th>
                                         <th data-field="OrderID" class="datatable-cell datatable-cell-sort"><span style="width: 100px;">Valor</span></th>
+                                        <th data-field="OrderID" class="datatable-cell datatable-cell-sort"><span style="width: 120px;">Status</span></th>
                                         <th data-field="OrderID" class="datatable-cell datatable-cell-sort"><span style="width: 100px;">Data de Criação</span></th>
                                         <th data-field="OrderID" class="datatable-cell datatable-cell-sort"><span style="width: 100px;">Data de Finalização</span></th>
                                         <th data-field="OrderID" class="datatable-cell datatable-cell-sort"><span style="width: 100px;">Ações</span></th>
@@ -60,6 +61,10 @@
                                             </a>
                                         </td>
                                         <td>{{ __moeda($v->somaItems()) }}</td>
+                                        <td>
+                                            <span class="badge bg-primary">{{ $labelStatusPedido[$v->status_pedido ?? 'aberto'] ?? ($v->status_pedido ?? '—') }}</span><br>
+                                            <span class="badge bg-secondary mt-1">{{ $labelStatusPagamento[$v->status_pagamento ?? 'pendente'] ?? ($v->status_pagamento ?? '—') }}</span>
+                                        </td>
                                         <td>{{ \Carbon\Carbon::parse($v->created_at)->format('d/m/Y H:i:s')}}</td>
                                         <td>{{ \Carbon\Carbon::parse($v->updated_at)->format('d/m/Y H:i:s')}}</td>
                                         <td><a target="_blank" href="{{ route('pedidos.verDetalhes', $v->id) }}" class="btn btn-info btn-sm">

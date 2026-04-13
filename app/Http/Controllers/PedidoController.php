@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AberturaCaixa;
 use App\Models\Acessor;
+use App\Models\AlteracaoEstoque;
 use App\Models\ApkComanda;
 use App\Models\Categoria;
 use App\Models\Certificado;
@@ -23,6 +24,7 @@ use App\Models\Mesa;
 use App\Models\NaturezaOperacao;
 use App\Models\Pais;
 use App\Models\Pedido;
+use App\Models\PedidoAuditoria;
 use App\Models\PedidoDelete;
 use App\Models\VendaCaixaPreVenda;
 use App\Models\Produto;
@@ -37,6 +39,8 @@ use App\Models\CreditoVenda;
 use App\Models\VendaCaixa;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Helpers\StockMove;
+use App\Models\Estoque;
 use NFePHP\DA\NFe\CupomPedido;
 use NFePHP\DA\NFe\Itens;
 
@@ -51,18 +55,45 @@ class PedidoController extends Controller
         $mesas = Mesa::where('empresa_id', request()->empresa_id)->get();
         $mesasParaAtivar = $this->mesasParaAtivar();
         $mesasFechadas = $this->mesasFechadas();
-        return view('pedidos.index', compact('mesas', 'mesasParaAtivar', 'mesasFechadas', 'pedidos'));
+        $labelStatusPedido = [
+            'aberto' => 'Aberto',
+            'em_preparo' => 'Em preparo',
+            'pronto' => 'Pronto',
+            'entregue' => 'Entregue',
+            'encerrado' => 'Encerrado',
+        ];
+        $labelStatusPagamento = [
+            'pendente' => 'Pendente',
+            'pago' => 'Pago',
+            'parcial' => 'Parcial',
+            'estornado' => 'Estornado',
+        ];
+        return view('pedidos.index', compact(
+            'mesas',
+            'mesasParaAtivar',
+            'mesasFechadas',
+            'pedidos',
+            'labelStatusPedido',
+            'labelStatusPagamento'
+        ));
     }
 
     public function store(Request $request)
     {
         try {
             $item = Pedido::create($request->all());
+            $this->registrarAuditoriaPedido(
+                $item->id,
+                'pedido_criado',
+                "Pedido {$item->comanda} registrado.",
+                []
+            );
             session()->flash('flash_sucesso', 'Pedido adicionado com sucesso!');
+            return redirect()->route('pedidos.show', $item->id);
         } catch (\Exception $e) {
             session()->flash('flash_erro', 'Algo deu errado: ' . $e->getMessage());
+            return redirect()->back();
         }
-        return redirect()->route('pedidos.show', $item->id);
     }
 
     public function show($id)
@@ -71,8 +102,79 @@ class PedidoController extends Controller
         ->orderBy('nome')->get();
         $tamanhos = TamanhoPizza::all();
         $item = Pedido::findOrFail($id);
+        if (!valida_objeto($item)) {
+            abort(403);
+        }
         $adicionais = ComplementoDelivery::where('empresa_id', request()->empresa_id)->get();
-        return view('pedidos.show', compact('item', 'adicionais', 'produtos', 'tamanhos'));
+        $auditorias = PedidoAuditoria::with('usuario')
+        ->where('pedido_id', $id)
+        ->where('empresa_id', request()->empresa_id)
+        ->orderBy('id', 'desc')
+        ->limit(25)
+        ->get();
+
+        $opcoesStatusPedido = [
+            'aberto' => 'Aberto',
+            'em_preparo' => 'Em preparo',
+            'pronto' => 'Pronto',
+            'entregue' => 'Entregue',
+            'encerrado' => 'Encerrado',
+        ];
+        $opcoesStatusPagamento = [
+            'pendente' => 'Pendente',
+            'pago' => 'Pago',
+            'parcial' => 'Parcial',
+            'estornado' => 'Estornado',
+        ];
+
+        return view('pedidos.show', compact(
+            'item',
+            'adicionais',
+            'produtos',
+            'tamanhos',
+            'auditorias',
+            'opcoesStatusPedido',
+            'opcoesStatusPagamento'
+        ));
+    }
+
+    public function atualizarStatusComanda(Request $request, $id)
+    {
+        $pedido = Pedido::findOrFail($id);
+        if (!valida_objeto($pedido)) {
+            abort(403);
+        }
+        $request->validate([
+            'status_pedido' => 'required|in:aberto,em_preparo,pronto,entregue,encerrado',
+            'status_pagamento' => 'required|in:pendente,pago,parcial,estornado',
+        ], [], [
+            'status_pedido' => 'status do pedido',
+            'status_pagamento' => 'status do pagamento',
+        ]);
+
+        $antes = [
+            'status_pedido' => $pedido->status_pedido,
+            'status_pagamento' => $pedido->status_pagamento,
+        ];
+        $pedido->status_pedido = $request->status_pedido;
+        $pedido->status_pagamento = $request->status_pagamento;
+        $pedido->save();
+
+        $this->registrarAuditoriaPedido(
+            $pedido->id,
+            'status_alterado',
+            'Status do pedido ou pagamento alterado.',
+            [
+                'antes' => $antes,
+                'depois' => [
+                    'status_pedido' => $pedido->status_pedido,
+                    'status_pagamento' => $pedido->status_pagamento,
+                ],
+            ]
+        );
+
+        session()->flash('flash_sucesso', 'Status da comanda atualizado.');
+        return redirect()->route('pedidos.show', $pedido->id);
     }
 
     public function storeItem(Request $request)
@@ -151,6 +253,17 @@ class PedidoController extends Controller
             }
         }
         if ($result) {
+            $this->registrarAuditoriaPedido(
+                $pedido->id,
+                'item_adicionado',
+                "Item {$result->id} adicionado ao pedido {$pedido->comanda}.",
+                [
+                    'item_pedido_id' => $result->id,
+                    'produto_id' => $result->produto_id,
+                    'quantidade' => $result->quantidade,
+                    'valor' => $result->valor
+                ]
+            );
             session()->flash('flash_sucesso', 'Item adicionado!');
         } else {
             session()->flash('flash_erro', 'Erro');
@@ -164,6 +277,18 @@ class PedidoController extends Controller
         ->first();
         $item->status = 1;
         $item->save();
+        $pedido = Pedido::find($item->pedido_id);
+        if ($pedido) {
+            $this->registrarAuditoriaPedido(
+                $pedido->id,
+                'item_concluido',
+                "Item {$item->id} marcado como concluido no pedido {$pedido->comanda}.",
+                [
+                    'item_pedido_id' => $item->id,
+                    'produto_id' => $item->produto_id
+                ]
+            );
+        }
         session()->flash('flash_sucesso', 'Produto ' . $item->produto->nome . ' marcado como concluido!');
         return redirect()->back();
     }
@@ -255,6 +380,29 @@ class PedidoController extends Controller
     {
         $item = ItemPedido::where('id', $id)
         ->first();
+        if (!$item) {
+            session()->flash('flash_erro', 'Item não encontrado.');
+            return redirect()->back();
+        }
+        $pedido = Pedido::find($item->pedido_id);
+        $estoqueAnterior = 0;
+        $estoqueNovo = 0;
+
+        if ($item->produto_id) {
+            $estoque = Estoque::where('produto_id', $item->produto_id)
+            ->whereNull('filial_id')
+            ->first();
+            $estoqueAnterior = $estoque ? (float)$estoque->quantidade : 0;
+
+            $stockMove = new StockMove();
+            $stockMove->pluStock($item->produto_id, (float)$item->quantidade);
+
+            $estoqueAtualizado = Estoque::where('produto_id', $item->produto_id)
+            ->whereNull('filial_id')
+            ->first();
+            $estoqueNovo = $estoqueAtualizado ? (float)$estoqueAtualizado->quantidade : 0;
+        }
+
         PedidoDelete::create(
             [
                 'pedido_id' => $item->pedido_id,
@@ -265,6 +413,38 @@ class PedidoController extends Controller
                 'empresa_id' => request()->empresa_id
             ]
         );
+
+        AlteracaoEstoque::create([
+            'empresa_id' => request()->empresa_id,
+            'usuario_id' => get_id_user(),
+            'produto_id' => $item->produto_id,
+            'quantidade' => $item->quantidade,
+            'observacao' => 'Estorno por remoção de item do pedido ' . ($pedido ? $pedido->comanda : $item->pedido_id),
+            'tipo' => 1,
+            'acao' => 'pedido_item_estornado',
+            'origem' => 'pedido',
+            'origem_id' => $item->pedido_id,
+            'pedido_id' => $item->pedido_id,
+            'item_pedido_id' => $item->id,
+            'estoque_anterior' => $estoqueAnterior,
+            'estoque_novo' => $estoqueNovo
+        ]);
+
+        if ($pedido) {
+            $this->registrarAuditoriaPedido(
+                $pedido->id,
+                'item_estornado',
+                "O pedido {$pedido->comanda} estornou o produto {$item->nomeDoProduto()}. Estoque novo: {$estoqueNovo}.",
+                [
+                    'item_pedido_id' => $item->id,
+                    'produto_id' => $item->produto_id,
+                    'quantidade' => $item->quantidade,
+                    'estoque_anterior' => $estoqueAnterior,
+                    'estoque_novo' => $estoqueNovo
+                ]
+            );
+        }
+
         if ($item->delete()) {
             session()->flash('flash_sucesso', 'Item removido!');
         } else {
@@ -289,6 +469,8 @@ class PedidoController extends Controller
                 'comanda' => $codComanda,
                 'observacao' => $request->observacao ?? '',
                 'status' => false,
+                'status_pedido' => 'aberto',
+                'status_pagamento' => 'pendente',
                 'nome' => '',
                 'rua' => '',
                 'numero' => '',
@@ -301,6 +483,15 @@ class PedidoController extends Controller
                 'empresa_id' => request()->empresa_id
             ]);
             if ($res) {
+                $this->registrarAuditoriaPedido(
+                    $res->id,
+                    'pedido_criado',
+                    "Pedido {$res->comanda} criado.",
+                    [
+                        'mesa_id' => $res->mesa_id,
+                        'cliente_id' => $res->cliente_id
+                    ]
+                );
                 session()->flash('flash_sucesso', 'Comanda aberta com sucesso!');
                 return redirect()->route('pedidos.show', $res->id);
             }
@@ -316,6 +507,12 @@ class PedidoController extends Controller
         ->where('empresa_id', request()->empresa_id)
         ->first();
         if (valida_objeto($pedido)) {
+            $this->registrarAuditoriaPedido(
+                $pedido->id,
+                'pedido_impresso',
+                "Pedido {$pedido->comanda} impresso.",
+                []
+            );
             $public = env('SERVIDOR_WEB') ? 'public/' : '';
             $pathLogo = $public . 'imgs/logo.jpg';
             $cupom = new CupomPedido($pedido, $pathLogo);
@@ -538,6 +735,12 @@ class PedidoController extends Controller
             $item->desativado = true;
             $res = $item->save();
             if ($res) {
+                $this->registrarAuditoriaPedido(
+                    $item->id,
+                    'pedido_desativado',
+                    "Pedido {$item->comanda} desativado.",
+                    []
+                );
                 session()->flash('flash_sucesso', 'Comanda desativada!');
             } else {
                 session()->flash('flash_erro', 'Algo deu errado');
@@ -554,13 +757,30 @@ class PedidoController extends Controller
         $ids = $request->ids;
         $ids = explode(",", $ids);
         $itens = [];
+        $pedidosAuditados = [];
         foreach ($ids as $i) {
             if ($i != null) {
                 $item = ItemPedido::find($i);
-                // dd($item);
+                if (!$item) {
+                    continue;
+                }
                 $item->impresso = true;
                 $item->save();
                 array_push($itens, $item);
+                if (!in_array($item->pedido_id, $pedidosAuditados)) {
+                    $pedidosAuditados[] = $item->pedido_id;
+                }
+            }
+        }
+        foreach ($pedidosAuditados as $pedidoId) {
+            $pedido = Pedido::find($pedidoId);
+            if ($pedido) {
+                $this->registrarAuditoriaPedido(
+                    $pedido->id,
+                    'itens_impressos',
+                    "Itens do pedido {$pedido->comanda} foram impressos.",
+                    []
+                );
             }
         }
         if (sizeof($itens) > 0) {
@@ -586,14 +806,66 @@ class PedidoController extends Controller
         ->where('empresa_id', request()->empresa_id)
         ->orderBy('id', 'desc')
         ->get();
-        return view('pedidos.controle_comandas', compact('comandas'));
+        $labelStatusPedido = [
+            'aberto' => 'Aberto',
+            'em_preparo' => 'Em preparo',
+            'pronto' => 'Pronto',
+            'entregue' => 'Entregue',
+            'encerrado' => 'Encerrado',
+        ];
+        $labelStatusPagamento = [
+            'pendente' => 'Pendente',
+            'pago' => 'Pago',
+            'parcial' => 'Parcial',
+            'estornado' => 'Estornado',
+        ];
+        return view('pedidos.controle_comandas', compact('comandas', 'labelStatusPedido', 'labelStatusPagamento'));
     }
 
     public function verDetalhes($id)
     {
         $pedido = Pedido::find($id);
+        if (!$pedido || !valida_objeto($pedido)) {
+            abort(403);
+        }
         $removidos = PedidoDelete::where('pedido_id', $id)->where('empresa_id', request()->empresa_id)->get();
-        return view('pedidos.detalhes', compact('pedido', 'removidos'));
+        $auditorias = PedidoAuditoria::with('usuario')
+        ->where('pedido_id', $id)
+        ->where('empresa_id', request()->empresa_id)
+        ->orderBy('id', 'desc')
+        ->get();
+        $opcoesStatusPedido = [
+            'aberto' => 'Aberto',
+            'em_preparo' => 'Em preparo',
+            'pronto' => 'Pronto',
+            'entregue' => 'Entregue',
+            'encerrado' => 'Encerrado',
+        ];
+        $opcoesStatusPagamento = [
+            'pendente' => 'Pendente',
+            'pago' => 'Pago',
+            'parcial' => 'Parcial',
+            'estornado' => 'Estornado',
+        ];
+        return view('pedidos.detalhes', compact(
+            'pedido',
+            'removidos',
+            'auditorias',
+            'opcoesStatusPedido',
+            'opcoesStatusPagamento'
+        ));
+    }
+
+    private function registrarAuditoriaPedido($pedidoId, $acao, $descricao, $meta = [])
+    {
+        PedidoAuditoria::create([
+            'empresa_id' => request()->empresa_id,
+            'pedido_id' => $pedidoId,
+            'usuario_id' => get_id_user(),
+            'acao' => $acao,
+            'descricao' => $descricao,
+            'meta' => !empty($meta) ? $meta : null
+        ]);
     }
 
     public function upload()

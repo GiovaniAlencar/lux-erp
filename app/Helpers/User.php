@@ -266,7 +266,7 @@ function __view_locais_user($lbl = "Locais de acesso")
 	return $html;
 }
 
-function __view_locais_select_filtro($lbl = "Local", $filial_id = null)
+function __view_locais_select_filtro($lbl = "Local", $filial_id = null, $wrapperClass = null)
 {
 	$locais = __locaisAtivos();
 	if (sizeof($locais) > 1) {
@@ -287,7 +287,9 @@ function __view_locais_select_filtro($lbl = "Local", $filial_id = null)
 		// }
 		// $html .= '</select></div></div></div>';
 
-		$html = view('filial.partials.filtro', compact('locais', 'lbl', 'filial_id'));
+		$wrapperClass = $wrapperClass ?? 'col-md-3 col-12 mt-3';
+
+		$html = view('filial.partials.filtro', compact('locais', 'lbl', 'filial_id', 'wrapperClass'));
 	} else {
 
 		$v = array_key_first($locais);

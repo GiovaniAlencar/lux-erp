@@ -8,23 +8,40 @@
 
 
             <div class="modal-body">
+                @php
+                    if (! isset($__vs)) {
+                        $__vs = function ($key) {
+                            $v = old($key);
+                            if ($v === null) {
+                                return '';
+                            }
+
+                            return is_array($v) ? '' : (string) $v;
+                        };
+                    }
+                @endphp
                 <div class="row">
                     <div class="col-md-2">
-                        {!! Form::tel('quantidade_modal', 'Quantidade')->attrs(['class' => 'qtd']) !!}
+                        {{-- names *_modal: não colidem com x_pedido[] / num_item_pedido[] da tabela (old() vira array e o Form quebra) --}}
+                        <label for="inp-quantidade_modal" class="form-label">Quantidade</label>
+                        <input type="tel" name="quantidade_modal" id="inp-quantidade_modal" class="form-control qtd" value="{{ $__vs('quantidade_modal') }}" autocomplete="off">
                     </div>
 
                     <div class="col-md-2">
-                        {!! Form::tel('valor_modal', 'Valor unitário')->attrs(['class' => 'moeda']) !!}
+                        <label for="inp-valor_modal" class="form-label">Valor unitário</label>
+                        <input type="tel" name="valor_modal" id="inp-valor_modal" class="form-control moeda" value="{{ $__vs('valor_modal') }}" autocomplete="off">
                     </div>
 
                     <div class="col-md-5">
-                        {!! Form::text('x_pedido', 'Descriçao do pedido')->attrs(['class' => '']) !!}
+                        <label for="inp-x_pedido" class="form-label">Descriçao do pedido</label>
+                        <input type="text" name="x_pedido_modal" id="inp-x_pedido" class="form-control" value="{{ $__vs('x_pedido_modal') }}" autocomplete="off">
                     </div>
 
                     <div class="col-md-3">
-                        {!! Form::text('num_item_pedido', 'Nº item do pedido')->attrs(['class' => '']) !!}
+                        <label for="inp-num_item_pedido" class="form-label">Nº item do pedido</label>
+                        <input type="text" name="num_item_pedido_modal" id="inp-num_item_pedido" class="form-control" value="{{ $__vs('num_item_pedido_modal') }}" autocomplete="off">
                     </div>
-                    
+
                 </div>
             </div>
             <div class="modal-footer">

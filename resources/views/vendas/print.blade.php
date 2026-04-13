@@ -86,10 +86,20 @@
 		.align-right {
 			text-align: right;
 		}
+
+		.page_break {
+			page-break-before: always;
+		}
+
+		/* --- Ficha de separação (2ª página do PDF) --- */
+@include('vendas._print_ficha_css')
 	</style>
 </head>
 
 <body>
+	@php
+		$item = $item ?? $venda ?? null;
+	@endphp
 
 	<div class="content">
 		<table>
@@ -307,6 +317,10 @@
 			</td>
 		</tr>
 	</table>
+
+	{{-- Ficha de separação: agrupada por categoria; quadrados para conferência na impressão --}}
+	<div class="page_break"></div>
+	@include('vendas.print_ficha_separacao')
 
 	@if($tipoDimensao)
 	<div class="page_break"></div>

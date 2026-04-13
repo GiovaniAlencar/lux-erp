@@ -1,4 +1,16 @@
 @extends('default.layout', ['title' => 'Nova Venda'])
+@section('css')
+<style>
+    .vendas-create-modern .lux-resumo-hint {
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        color: #475569;
+        border-left: 3px solid #94a3b8 !important;
+    }
+    .vendas-create-modern .desconto-resumo {
+        color: #334155;
+    }
+</style>
+@endsection
 @section('content')
 <div class="page-content vendas-create-modern">
     {!! Form::open()
@@ -28,7 +40,7 @@
                         <div class="mb-2 small text-muted">Subtotal</div>
                         <div class="h5 mb-3 subtotal-resumo">R$ 0,00</div>
                         <div class="mb-2 small text-muted">Desconto</div>
-                        <input type="text" class="form-control form-control-sm resumo-desconto moeda" placeholder="0,00">
+                        <div class="h5 mb-3 desconto-resumo">R$ 0,00</div>
                         <div class="mb-2 small text-muted mt-3">Total</div>
                         <div class="h4 fw-bold total-resumo">R$ 0,00</div>
                         <button type="button" class="btn btn-success w-100 mt-3 btn-venda" disabled onclick="salvar('venda')">
@@ -104,9 +116,16 @@ document.addEventListener('DOMContentLoaded', function(){
     const spanTotal = document.querySelector('.total-resumo');
     const spanSubtotal = document.querySelector('.subtotal-resumo');
     const spanQtd = document.querySelector('.qtd-itens-resumo');
-    const resumoDesc = document.querySelector('.resumo-desconto');
+    const resumoDesc = document.querySelector('.desconto-resumo');
 
     let last = { total: null, subtotal: null, qtd: null, desc: null };
+
+    function textoDescontoResumo(val) {
+        var s = (val != null ? String(val) : '').trim();
+        if (!s) s = '0,00';
+        if (s.indexOf('R$') === 0) return s;
+        return 'R$ ' + s;
+    }
 
     function syncFromForm(){
         const totalVenda = document.querySelector('.total-venda');
@@ -148,15 +167,13 @@ document.addEventListener('DOMContentLoaded', function(){
         }
 
         const formDesc = document.querySelector('input.desconto');
-        if(formDesc && resumoDesc && last.desc !== formDesc.value){ resumoDesc.value = formDesc.value; last.desc = formDesc.value; }
-    }
-
-    // do resumo para o form real
-    if(resumoDesc){
-        resumoDesc.addEventListener('input', function(){
-            const formDesc = document.querySelector('input.desconto');
-            if(formDesc && formDesc.value !== resumoDesc.value){ formDesc.value = resumoDesc.value; formDesc.dispatchEvent(new Event('input')); }
-        });
+        if (formDesc && resumoDesc) {
+            var dtxt = textoDescontoResumo(formDesc.value);
+            if (last.desc !== formDesc.value) {
+                resumoDesc.textContent = dtxt;
+                last.desc = formDesc.value;
+            }
+        }
     }
 
     // Observadores específicos em vez de body inteiro

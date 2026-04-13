@@ -80,6 +80,9 @@
                                     --
                                     @endif
                                 </h5>
+                                <h5>Pedido: <span class="badge bg-primary">{{ $labelStatusPedido[$p->status_pedido ?? 'aberto'] ?? ($p->status_pedido ?? '—') }}</span>
+                                    <span class="badge bg-secondary">{{ $labelStatusPagamento[$p->status_pagamento ?? 'pendente'] ?? ($p->status_pagamento ?? '—') }}</span>
+                                </h5>
                                 @if($p->referencia_cliete != '')
                                 <h5 class="text-danger">Mesa QrCode</h5>
                                 @else
@@ -90,6 +93,9 @@
                                 <a class="btn btn-danger btn-sm" style="width: 100%;" onclick='swal("Atenção!", "Deseja desativar esta comanda? os dados não poderam ser retomados!", "warning").then((sim) => {if(sim){ location.href="/pedidos/desativar/{{ $p->id }}" }else{return false} })' href="#!"><i class="bx bx-x"></i> Desativar</a>
                                 <a href="{{ route('pedidos.show', $p->id) }}" style="width: 100%; margin-top: 5px;" class="btn btn-info btn-sm">
                                     <i class="bx bx-list-ul"></i>Ver Itens
+                                </a>
+                                <a href="{{ route('pedidos.verDetalhes', $p->id) }}" style="width: 100%; margin-top: 5px;" class="btn btn-outline-secondary btn-sm" target="_blank">
+                                    <i class="bx bx-history"></i> Auditoria / removidos
                                 </a>
                             </div>
                         </div>

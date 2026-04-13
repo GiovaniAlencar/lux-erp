@@ -10,6 +10,10 @@
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+
         <link href="/assets/css/simplebar.css" rel="stylesheet" />
         <link href="/assets/css/tagsinput.css" rel="stylesheet" />
         <link href="/assets/css/perfect-scrollbar.css" rel="stylesheet" />
@@ -50,6 +54,7 @@
         </style>
         <link href="/assets/css/extend.css" rel="stylesheet" />
         @endif
+                <link rel="stylesheet" href="/assets/css/modern-ui.css">
     </head>
 
     <body>
@@ -207,16 +212,12 @@
             </nav>
         </div>
     </header>
-</div>
 
-<div class="page-wrapper">
-    <div class="row">
-
-
-        @yield('content')
-
+    <div class="page-wrapper">
+        <div class="row">
+            @yield('content')
+        </div>
     </div>
-</div>
 
 @if(!isset($not_loading))
 <div class="modal-loading loading-class"></div>
@@ -396,15 +397,15 @@
     }
 
     @if(session()->has('flash_sucesso'))
-    toastr.success('{{ session()->get('flash_sucesso') }}');
+    toastr.success(@json(session('flash_sucesso')));
     @endif
 
     @if(session()->has('flash_erro'))
-    toastr.error('{{ session()->get('flash_erro') }}');
+    toastr.error(@json(session('flash_erro')));
     @endif
 
     @if(session()->has('flash_warning'))
-    toastr.warning('{{ session()->get('flash_warning') }}');
+    toastr.warning(@json(session('flash_warning')));
     @endif
 
 </script>

@@ -732,8 +732,8 @@ function validateButtonSave() {
 }
 
 function alertCreate(msg) {
-    var div = '<div class="alert alert-danger border-0 bg-danger alert-dismissible fade show">'
-    div += '<div class="text-white">' + msg + '</div>'
+    var div = '<div class="alert lux-resumo-hint mb-2 py-2 px-3 small border-0 rounded-3 shadow-sm" role="alert">'
+    div += msg
     div += '</div>'
     $('.alerts').append(div)
 }

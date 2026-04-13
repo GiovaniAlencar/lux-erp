@@ -792,7 +792,13 @@ Route::middleware([
         Route::get('/importacao', 'VendaController@importacao')->name('vendas.importacao');
         Route::post('/importacao', 'VendaController@importStore')->name('vendas.importacao');
         Route::get('/print/{id}', 'VendaController@print')->name('vendas.print');
+        Route::get('/print-ficha/{id}', 'VendaController@printFichaSeparacao')->name('vendas.print-ficha');
+        Route::post('/print-status/{id}', 'VendaController@printStatusJson')->name('vendas.print-status');
         Route::post('/routes-txt', 'VendaController@routesTxt')->name('vendas.routes-txt');
+        Route::post('/workflow-status', 'VendaController@workflowStatus')->name('vendas.workflow-status');
+        Route::post('/workflow-marcar-entregue', 'VendaController@workflowMarcarEntregue')->name('vendas.workflow-marcar-entregue');
+        Route::post('/fechar-caixa/{id}', 'VendaController@fecharCaixa')->name('vendas.fechar-caixa');
+        Route::post('/reabrir-caixa/{id}', 'VendaController@reabrirCaixa')->name('vendas.reabrir-caixa');
         Route::get('/xml-temp/{id}', 'VendaController@xmlTemp')->name('vendas.xml-temp');
         Route::get('/danfe-temp/{id?}', 'VendaController@danfeTemp')->name('vendas.danfe-temp');
         Route::get('/state-fiscal/{id}', 'NfeController@estadoFiscal')->name('vendas.state-fiscal');
@@ -918,6 +924,7 @@ Route::middleware([
         Route::get('/itensParaFrenteCaixa', 'PedidoController@itensParaFrenteCaixa')->name('pedidos.itensParaFrenteCaixa');
         Route::get('/controleComandas', 'PedidoController@controleComandas')->name('pedidos.controleComandas');
         Route::get('/verDetalhes/{id}', 'PedidoController@verDetalhes')->name('pedidos.verDetalhes');
+        Route::post('/atualizarStatusComanda/{id}', 'PedidoController@atualizarStatusComanda')->name('pedidos.atualizarStatusComanda');
 
         Route::get('/upload', 'PedidoController@upload')->name('pedidos.upload');
         Route::post('/apk', 'PedidoController@apkUpload')->name('pedidos.upload-store');

@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 class AlteracaoEstoque extends Model
 {
     protected $fillable = [
-		 'produto_id', 'usuario_id', 'quantidade', 'tipo', 'observacao', 'empresa_id'
+		 'produto_id', 'usuario_id', 'quantidade', 'tipo', 'observacao', 'empresa_id',
+         'acao', 'origem', 'origem_id', 'pedido_id', 'item_pedido_id', 'estoque_anterior', 'estoque_novo'
 	];
 
 	public function produto(){

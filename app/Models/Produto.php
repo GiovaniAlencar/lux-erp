@@ -3,8 +3,13 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use App\Models\NaturezaOperacao;
 use App\Models\Estoque;
+use App\Models\ItemVenda;
+use App\Models\ItemCompra;
+use App\Models\ItemVendaCaixa;
+use App\Models\AlteracaoEstoque;
 
 class Produto extends Model
 {
@@ -635,26 +640,77 @@ class Produto extends Model
 {
 	$valor = 0;
 	$linkId = null;
+	$quantidade = isset($objeto->quantidade_mov) ? (float) $objeto->quantidade_mov : (float) $objeto->quantidade;
 
 	if ($tipo == 'Compras') {
 		$valor = $objeto->valor_unitario;
-		$linkId = $objeto->compra_id ?? $objeto->id; // ou ajuste conforme seu relacionamento
-	} else if ($tipo == 'Vendas') {
+		$linkId = $objeto->compra_id ?? $objeto->id;
+	} elseif ($tipo == 'Vendas') {
 		$valor = $objeto->valor;
-		$linkId = $objeto->venda_id ?? $objeto->id; // aqui é o id da VENDA
-	} else if ($tipo == 'PDV') {
+		$linkId = $objeto->venda_id ?? $objeto->id;
+	} elseif ($tipo == 'PDV') {
 		$valor = $objeto->valor;
 		$linkId = $objeto->venda_caixa_id ?? $objeto->id;
+	} else {
+		$valor = $objeto->valor ?? 0;
+		$linkId = $objeto->id;
 	}
 
-	return [
-		'quantidade' => $objeto->quantidade,
+	$row = [
+		'quantidade' => $quantidade,
 		'tipo' => $tipo,
 		'valor' => $valor,
 		'data' => $objeto->created_at,
 		'id' => $linkId,
 		'tipo_model' => $tipo,
+		'observacao' => $objeto->observacao ?? '',
+		'estoque_anterior' => $objeto->estoque_anterior ?? null,
+		'estoque_novo' => $objeto->estoque_novo ?? null,
 	];
+
+	if ($tipo === 'Vendas') {
+		$row['venda_id'] = $objeto->venda_id;
+		$row['cliente_venda'] = optional(optional($objeto->venda)->cliente)->razao_social;
+	} elseif ($tipo === 'Compras') {
+		$row['compra_id'] = $objeto->compra_id;
+	} elseif ($tipo === 'PDV') {
+		$row['pdv_id'] = $objeto->venda_caixa_id ?? null;
+	} elseif (strpos((string)$tipo, 'Alteração de Estoque') === 0) {
+		$row['tipo_model'] = 'AlteracaoEstoque';
+		$row['alteracao_acao'] = $objeto->acao ?? null;
+		$row['alteracao_origem'] = $objeto->origem ?? null;
+		$row['alteracao_origem_id'] = $objeto->origem_id ?? null;
+		$row['alteracao_pedido_ref'] = $objeto->pedido_id ?? null;
+		$row['alteracao_tipo_codigo'] = $objeto->tipo;
+		if (in_array((string) ($objeto->acao ?? ''), ['edicao_venda_estorno', 'edicao_venda_saida'], true)) {
+			$row['tipo'] = $objeto->acao === 'edicao_venda_estorno'
+				? 'Estorno (edição venda)'
+				: 'Ajuste venda (+)';
+			$row['valor'] = $this->resolverValorMovimentoEdicaoVenda($objeto);
+		}
+	}
+
+	$pri = 10;
+	if ($tipo === 'Compras') {
+		$pri = 12;
+	} elseif ($tipo === 'PDV') {
+		$pri = 15;
+	} elseif ($tipo === 'Vendas') {
+		$pri = 20;
+	} elseif (strpos((string) $tipo, 'Alteração de Estoque') === 0) {
+		$acao = (string) ($objeto->acao ?? '');
+		if ($acao === 'edicao_venda_estorno') {
+			$pri = 92;
+		} elseif ($acao === 'edicao_venda_saida') {
+			$pri = 91;
+		} else {
+			$pri = 50;
+		}
+	}
+	$row['mov_priority'] = $pri;
+	$row['mov_sort_id'] = (int) ($objeto->id ?? 0);
+
+	return $row;
 }
 
 
@@ -832,15 +888,77 @@ class Produto extends Model
 	{
 		$arr = [];
 
-		$emVendas = $this->emVendas;
-		$emVendaCaixas = $this->emVendaCaixas;
-		$emCompras = $this->emCompras;
-		$emAlteracaoEstoque = $this->emAlteracaoEstoque;
+		$ajustesEdicaoVenda = AlteracaoEstoque::where('produto_id', $this->id)
+			->where('origem', 'venda')
+			->whereIn('acao', ['edicao_venda_estorno', 'edicao_venda_saida'])
+			->get(['origem_id', 'acao', 'quantidade']);
+		$mapAjustePorVenda = [];
+		foreach ($ajustesEdicaoVenda as $a) {
+			$vid = (int) ($a->origem_id ?? 0);
+			if ($vid <= 0) {
+				continue;
+			}
+			if (!isset($mapAjustePorVenda[$vid])) {
+				$mapAjustePorVenda[$vid] = ['estorno' => 0.0, 'saida' => 0.0];
+			}
+			if ($a->acao === 'edicao_venda_estorno') {
+				$mapAjustePorVenda[$vid]['estorno'] += (float) $a->quantidade;
+			} elseif ($a->acao === 'edicao_venda_saida') {
+				$mapAjustePorVenda[$vid]['saida'] += (float) $a->quantidade;
+			}
+		}
 
-		foreach ($emVendas as $m) {
-			$temp = $this->criaArray($m, 'Vendas');
+		$emVendas = ItemVenda::where('produto_id', $this->id)
+			->with(['venda.cliente'])
+			->orderBy('id')
+			->get();
+
+		$porVenda = $emVendas->groupBy(fn ($it) => (int) ($it->venda_id ?? 0));
+		foreach ($porVenda as $vid => $itens) {
+			if ($vid <= 0 || $itens->isEmpty()) {
+				continue;
+			}
+			$sumQ = (float) $itens->sum(fn ($i) => (float) $i->quantidade);
+			$adj = $mapAjustePorVenda[$vid] ?? null;
+			if ($sumQ < 0.00001 && $adj === null) {
+				continue;
+			}
+			/** @var ItemVenda $rep */
+			$rep = $itens->sortByDesc('id')->first();
+			$clone = $rep->replicate();
+			$clone->id = (int) $rep->id;
+			$clone->quantidade = $sumQ;
+			$vendaCab = $rep->relationLoaded('venda') ? $rep->getRelation('venda') : null;
+			$dataOrdVenda = null;
+			if ($vendaCab) {
+				$dataOrdVenda = $vendaCab->data_registro ?? $vendaCab->created_at;
+			}
+			if ($dataOrdVenda !== null) {
+				$clone->created_at = $dataOrdVenda;
+			} else {
+				$maxCreated = $itens->max('created_at');
+				if ($maxCreated !== null) {
+					$clone->created_at = $maxCreated;
+				}
+			}
+			if ($sumQ > 0.00001) {
+				$somaValQ = (float) $itens->sum(fn ($i) => (float) $i->quantidade * (float) $i->valor);
+				$clone->valor = $somaValQ / $sumQ;
+			}
+			if ($adj !== null) {
+				$clone->quantidade_mov = $sumQ + (float) $adj['estorno'] - (float) $adj['saida'];
+			}
+			if ($rep->relationLoaded('venda')) {
+				$clone->setRelation('venda', $rep->getRelation('venda'));
+			}
+
+			$temp = $this->criaArray($clone, 'Vendas');
 			array_push($arr, $temp);
 		}
+
+		$emVendaCaixas = ItemVendaCaixa::where('produto_id', $this->id)->get();
+		$emCompras = ItemCompra::where('produto_id', $this->id)->with(['compra'])->get();
+		$emAlteracaoEstoque = AlteracaoEstoque::where('produto_id', $this->id)->get();
 
 		foreach ($emVendaCaixas as $m) {
 			$temp = $this->criaArray($m, 'PDV');
@@ -859,8 +977,165 @@ class Produto extends Model
 		}
 
 		usort($arr, function ($a, $b) {
-			return $a['data'] < $b['data'] ? 1 : -1;
+			$cmp = ($b['data'] ?? null) <=> ($a['data'] ?? null);
+			if ($cmp !== 0) {
+				return $cmp;
+			}
+			$cmpP = (int) ($b['mov_priority'] ?? 0) <=> (int) ($a['mov_priority'] ?? 0);
+			if ($cmpP !== 0) {
+				return $cmpP;
+			}
+			$ia = (int) ($a['mov_sort_id'] ?? 0);
+			$ib = (int) ($b['mov_sort_id'] ?? 0);
+
+			return $ib <=> $ia;
 		});
-		return $arr;
+
+		return $this->enriquecerMovimentacoesLinhasEstoque($arr);
+	}
+
+	/**
+	 * Acrescenta texto legível (estoque antes / novo) percorrendo do movimento mais recente para o passado.
+	 *
+	 * @param  array<int, array<string, mixed>>  $movDesc
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function enriquecerMovimentacoesLinhasEstoque(array $movDesc): array
+	{
+		$balance = (float) DB::table('estoques')->where('produto_id', $this->id)->sum('quantidade');
+
+		foreach ($movDesc as &$row) {
+			$q = abs((float)($row['quantidade'] ?? 0));
+			$linhas = [];
+			$tm = $row['tipo_model'] ?? '';
+
+			if ($tm === 'AlteracaoEstoque' || strpos((string)$row['tipo'], 'Alteração de Estoque') === 0) {
+				if (!empty($row['alteracao_acao']) && strpos((string) $row['alteracao_acao'], 'edicao_venda_') === 0) {
+					$row['linhas_detalhe'] = [trim((string) ($row['observacao'] ?? ''))];
+					$ea = $row['estoque_anterior'];
+					$en = $row['estoque_novo'];
+					if ($ea !== null && $en !== null && $ea !== '' && $en !== '') {
+						$balance = (float) $ea;
+					}
+					continue;
+				}
+				$ea = $row['estoque_anterior'];
+				$en = $row['estoque_novo'];
+				if ($ea !== null && $en !== null && $ea !== '' && $en !== '') {
+					$antes = (float) $ea;
+					$depois = (float) $en;
+					$linhas[] = 'Estoque anterior: ' . $this->fmtQtdMov($antes) . ' un.';
+					if (!empty($row['observacao'])) {
+						$linhas[] = trim((string) $row['observacao']);
+					}
+					if (!empty($row['alteracao_acao'])) {
+						$linhas[] = 'Ação: ' . $row['alteracao_acao'] . '.';
+						if (stripos((string) $row['alteracao_acao'], 'estorno') !== false) {
+							$linhas[] = 'Tipo: estorno — quantidade devolvida ao estoque.';
+						}
+					}
+					if (!empty($row['alteracao_pedido_ref'])) {
+						$linhas[] = 'Tirado / referente ao pedido ou venda nº ' . $row['alteracao_pedido_ref'] . '.';
+					}
+					$linhas[] = 'Novo estoque: ' . $this->fmtQtdMov($depois) . ' un.';
+					$balance = $antes;
+				} else {
+					$cod = $row['alteracao_tipo_codigo'] ?? null;
+					$novo = $balance;
+					if ($cod == 1 || $cod === '1' || $cod === 'entrada') {
+						$antes = $balance - $q;
+						$linhas[] = 'Estoque anterior: ' . $this->fmtQtdMov($antes) . ' un.';
+						$linhas[] = 'Entrada manual: ' . $this->fmtQtdMov($q) . ' un.';
+						$linhas[] = 'Novo estoque: ' . $this->fmtQtdMov($novo) . ' un.';
+						$balance = $antes;
+					} else {
+						$antes = $balance + $q;
+						$linhas[] = 'Estoque anterior: ' . $this->fmtQtdMov($antes) . ' un.';
+						$linhas[] = 'Saída manual: ' . $this->fmtQtdMov($q) . ' un.';
+						$linhas[] = 'Novo estoque: ' . $this->fmtQtdMov($novo) . ' un.';
+						$balance = $antes;
+					}
+					if (!empty($row['observacao'])) {
+						array_unshift($linhas, trim((string) $row['observacao']));
+					}
+				}
+				$row['linhas_detalhe'] = $linhas;
+				continue;
+			}
+
+			if ($tm === 'Vendas') {
+				$novo = $balance;
+				$antes = $balance + $q;
+				$vid = $row['venda_id'] ?? $row['id'];
+				$linhas[] = 'Estoque anterior: ' . $this->fmtQtdMov($antes) . ' un.';
+				$linhas[] = 'Saída por venda nº ' . $vid . ' — ' . $this->fmtQtdMov($q) . ' un.';
+				if (!empty($row['cliente_venda'])) {
+					$linhas[] = 'Cliente: ' . $row['cliente_venda'] . '.';
+				}
+				$linhas[] = 'Novo estoque: ' . $this->fmtQtdMov($novo) . ' un.';
+				$balance = $antes;
+				$row['linhas_detalhe'] = $linhas;
+				continue;
+			}
+
+			if ($tm === 'PDV') {
+				$novo = $balance;
+				$antes = $balance + $q;
+				$pid = $row['pdv_id'] ?? $row['id'];
+				$linhas[] = 'Estoque anterior: ' . $this->fmtQtdMov($antes) . ' un.';
+				$linhas[] = 'Saída por PDV (caixa) nº ' . $pid . ' — ' . $this->fmtQtdMov($q) . ' un.';
+				$linhas[] = 'Novo estoque: ' . $this->fmtQtdMov($novo) . ' un.';
+				$balance = $antes;
+				$row['linhas_detalhe'] = $linhas;
+				continue;
+			}
+
+			if ($tm === 'Compras') {
+				$novo = $balance;
+				$antes = $balance - $q;
+				$cid = $row['compra_id'] ?? $row['id'];
+				$linhas[] = 'Estoque anterior: ' . $this->fmtQtdMov($antes) . ' un.';
+				$linhas[] = 'Entrada por compra nº ' . $cid . ' — ' . $this->fmtQtdMov($q) . ' un.';
+				$linhas[] = 'Novo estoque: ' . $this->fmtQtdMov($novo) . ' un.';
+				$balance = $antes;
+				$row['linhas_detalhe'] = $linhas;
+				continue;
+			}
+
+			$row['linhas_detalhe'] = array_filter([$row['observacao'] ?? '']);
+		}
+		unset($row);
+
+		return $movDesc;
+	}
+
+	private function fmtQtdMov(float $q): string
+	{
+		if (abs($q - round($q)) < 0.0001) {
+			return (string)(int) round($q);
+		}
+
+		return rtrim(rtrim(number_format($q, 4, ',', ''), '0'), ',') ?: '0';
+	}
+
+	private function resolverValorMovimentoEdicaoVenda($alteracao): float
+	{
+		$obs = (string) ($alteracao->observacao ?? '');
+		if (preg_match('/Valor unit.rio:\s*R\$\s*([0-9\.\,]+)/iu', $obs, $m)
+			|| preg_match('/vl\s+unit\s+R\$\s*([0-9\.\,]+)/iu', $obs, $m)) {
+			return (float) __convert_value_bd($m[1]);
+		}
+		$vendaId = (int) ($alteracao->origem_id ?? 0);
+		if ($vendaId > 0) {
+			$valor = ItemVenda::where('venda_id', $vendaId)
+				->where('produto_id', $this->id)
+				->orderByDesc('id')
+				->value('valor');
+			if ($valor !== null) {
+				return (float) $valor;
+			}
+		}
+
+		return (float) ($this->valor_venda ?? 0);
 	}
 }

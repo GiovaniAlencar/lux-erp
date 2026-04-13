@@ -10,7 +10,7 @@ class Pedido extends Model
 	protected $fillable = [
 		'comanda', 'status', 'desativado', 'observacao', 'rua', 'numero', 'bairro_id',
 		'referencia', 'telefone', 'nome', 'mesa_id', 'referencia_cliete', 'mesa_ativa', 'fechar_mesa', 
-		'empresa_id', 'cliente_id'
+		'empresa_id', 'cliente_id', 'status_pedido', 'status_pagamento'
 	];
 
 	public function itens(){
@@ -33,6 +33,11 @@ class Pedido extends Model
 
 	public function cliente(){
 		return $this->belongsTo(Cliente::class, 'cliente_id');
+	}
+
+	public function auditorias()
+	{
+		return $this->hasMany(PedidoAuditoria::class, 'pedido_id', 'id');
 	}
 
 	public function somaItems(){

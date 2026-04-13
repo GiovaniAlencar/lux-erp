@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Helpers\StockMove;
+use App\Models\AlteracaoEstoque;
 use App\Models\Estoque;
 use App\Models\Acessor;
 use App\Models\Categoria;
@@ -27,6 +28,8 @@ use App\Models\Frete;
 use App\Models\NaturezaOperacao;
 use App\Models\Orcamento;
 use App\Models\Venda;
+use App\Models\VendaAuditoria;
+use App\Models\Usuario;
 use App\Models\Pais;
 use App\Models\Produto;
 use App\Models\TelaPedido;
@@ -64,6 +67,18 @@ class VendaController extends Controller
         $pesquisa_data = $request->get('pesquisa_data');
         $data_emissao = $request->get('data_emissao');
         $filial_id = $request->get('filial_id');
+        $filter_usuario_id = $request->get('filter_usuario_id');
+        $filter_status_pedido_raw = $request->input('filter_status_pedido', []);
+        if (!is_array($filter_status_pedido_raw)) {
+            $filter_status_pedido_raw = ($filter_status_pedido_raw !== null && $filter_status_pedido_raw !== '')
+                ? [$filter_status_pedido_raw]
+                : [];
+        }
+        $filter_status_pedido_selecionados = array_values(array_unique(array_filter(
+            $filter_status_pedido_raw,
+            static fn ($v) => $v !== null && $v !== ''
+        )));
+        $filter_status_pagamento = $request->get('filter_status_pagamento');
         $local_padrao = __get_local_padrao();
         if (!$filial_id && $local_padrao) {
             $filial_id = $local_padrao;
@@ -101,6 +116,15 @@ class VendaController extends Controller
             ->when(!empty($cliente_id), function ($query) use ($cliente_id) {
                 return $query->where('cliente_id', $cliente_id);
             })
+            ->when(!empty($filter_usuario_id), function ($query) use ($filter_usuario_id) {
+                return $query->where('usuario_id', $filter_usuario_id);
+            })
+            ->when(count($filter_status_pedido_selecionados) > 0, function ($query) use ($filter_status_pedido_selecionados) {
+                return $query->whereIn('status_pedido', $filter_status_pedido_selecionados);
+            })
+            ->when(!empty($filter_status_pagamento), function ($query) use ($filter_status_pagamento) {
+                return $query->where('status_pagamento', $filter_status_pagamento);
+            })
             ->when($estado_emissao != "", function ($query) use ($estado_emissao) {
                 return $query->where('estado_emissao', $estado_emissao);
             })
@@ -118,7 +142,46 @@ class VendaController extends Controller
         $config = ConfigNota::where('empresa_id', request()->empresa_id)
             ->first();
         $contigencia = $this->getContigencia(request()->empresa_id);
-        return view('vendas.index', compact('data', 'config', 'contigencia', 'filial_id'));
+
+        $labelStatusPedidoVenda = [
+            'aguardando_confirmacao' => 'Aguardando confirmação',
+            'confirmado' => 'Confirmado',
+            'em_separacao' => 'Em separação',
+            'separado' => 'Separado',
+            'alteracao_pendente' => 'Alteração pendente',
+            'em_rota_entrega' => 'Em rota de entrega',
+            'entregue' => 'Entregue',
+            'cancelada' => 'Cancelada',
+        ];
+        $labelStatusPagamentoVenda = [
+            'pendente' => 'Pendente',
+            'pago' => 'Pago',
+            'parcial' => 'Parcial',
+            'estornado' => 'Estornado',
+        ];
+        $usuarioAdm = (bool) optional(Usuario::find(get_id_user()))->adm;
+
+        $usuariosFiltroVenda = Usuario::where('empresa_id', $request->empresa_id)
+            ->where('ativo', 1)
+            ->orderBy('nome')
+            ->get(['id', 'nome']);
+
+        $qtdAlteracaoPendente = Venda::where('empresa_id', $request->empresa_id)
+            ->where('status_pedido', 'alteracao_pendente')
+            ->count();
+
+        return view('vendas.index', compact(
+            'data',
+            'config',
+            'contigencia',
+            'filial_id',
+            'labelStatusPedidoVenda',
+            'labelStatusPagamentoVenda',
+            'usuarioAdm',
+            'usuariosFiltroVenda',
+            'filter_status_pedido_selecionados',
+            'qtdAlteracaoPendente'
+        ));
     }
 
     private function getContigencia($empresa_id)
@@ -231,7 +294,9 @@ class VendaController extends Controller
                         'sequencia_cce' => $request->sequencia_cce ?? 0,
                         'chave' => $request->chave ?? 0,
                         'tipo_pagamento' => $request->tipo_pagamentos[0],
-                        'filial_id' => $request->filial_id != -1 ? $request->filial_id : null
+                        'filial_id' => $request->filial_id != -1 ? $request->filial_id : null,
+                        'status_pedido' => 'aguardando_confirmacao',
+                        'status_pagamento' => 'pendente',
                     ]);
 
                     $venda = Venda::create($request->all());
@@ -254,7 +319,7 @@ class VendaController extends Controller
                             ->lockForUpdate()->first();
                         $available = $row ? (float)$row->quantidade : 0.0;
                         if ($available < (float)$sum - 0.0001) {
-                            throw new \Exception("Estoque insuficiente para o produto ID {$pid}. Disponível: {$available}. Solicitado: {$sum}");
+                            throw new \Exception($this->mensagemEstoqueInsuficiente($pid, $available, $sum));
                         }
                         $lockedStocks[$pid] = $row;
                     }
@@ -310,15 +375,26 @@ class VendaController extends Controller
                             ]);
                         }
                     }
+                    $venda->load('cliente');
+                    $this->registrarAuditoriaVenda(
+                        $venda->id,
+                        'venda_criada',
+                        'Venda #' . $venda->id . ' registrada — ' . ($venda->cliente ? $venda->cliente->razao_social : 'Cliente'),
+                        [
+                            'valor_total' => (float)$venda->valor_total,
+                            'status_pedido' => $venda->status_pedido,
+                            'status_pagamento' => $venda->status_pagamento,
+                        ]
+                    );
                     return true;
                 });
                 session()->flash("flash_sucesso", "Venda adicionada com sucesso!");
             } catch (\Exception $e) {
-                echo $e->getMessage();
-                die;
-                session()->flash("flash_erro", "Algo deu errado: " . $e->getMessage());
                 __saveLogError($e, request()->empresa_id);
+
+                return redirect()->back()->withInput()->with('flash_erro', $e->getMessage());
             }
+
             return redirect()->route('vendas.index');
         } else {
             // ORCAMENTO
@@ -411,6 +487,10 @@ class VendaController extends Controller
         if (!__valida_objeto($item)) {
             abort(403);
         }
+        if ($item->fechada_caixa) {
+            session()->flash('flash_erro', 'Esta venda está fechada no caixa e não pode ser alterada.');
+            return redirect()->route('vendas.show', $item->id);
+        }
         $dataValidate = [
             'categorias',
             'produtos',
@@ -484,11 +564,27 @@ class VendaController extends Controller
 
     public function update(Request $request, $id)
     {
+        $vendaPre = Venda::findOrFail($id);
+        if (!__valida_objeto($vendaPre)) {
+            abort(403);
+        }
+        if ($vendaPre->fechada_caixa) {
+            session()->flash('flash_erro', 'Esta venda está fechada no caixa e não pode ser alterada.');
+            return redirect()->route('vendas.index');
+        }
         $this->_validate($request);
         if ($request->type == 'venda') {
             try {
                 $result = DB::transaction(function () use ($request, $id) {
                     $item = Venda::findOrFail($id);
+                    $statusAntes = $item->status_pedido;
+                    $item->load(['itens.produto']);
+                    $itensAntes = $this->itensParaAuditoria($item->itens);
+                    $cabecalhoAntes = [
+                        'desconto' => (float)$item->desconto,
+                        'acrescimo' => (float)$item->acrescimo,
+                        'frete' => (float)$item->frete,
+                    ];
                     $natureza = NaturezaOperacao::findOrFail($request->natureza_id);
                     $valor_total = $this->somaItens($request);
                     $frete_id = null;
@@ -547,7 +643,7 @@ class VendaController extends Controller
                             ->lockForUpdate()->first();
                         $available = $row ? (float)$row->quantidade : 0.0;
                         if ($available < (float)$sum - 0.0001) {
-                            throw new \Exception("Estoque insuficiente para o produto ID {$pid}. Disponível: {$available}. Solicitado: {$sum}");
+                            throw new \Exception($this->mensagemEstoqueInsuficiente($pid, $available, $sum));
                         }
                         $lockedStocks[$pid] = $row;
                     }
@@ -606,28 +702,86 @@ class VendaController extends Controller
                     // if($freteAux){
                     //     $freteAux->delete();
                     // }
-                    return true;
+                    $virouAlteracaoPendente = in_array($statusAntes, ['separado', 'em_separacao', 'em_rota_entrega'], true);
+                    if ($virouAlteracaoPendente) {
+                        $item->refresh();
+                        $item->status_pedido = 'alteracao_pendente';
+                        $item->save();
+                    }
+                    $item->refresh();
+                    $itensDepois = $this->itensDepoisFromRequest($request);
+                    $cabecalhoDepois = [
+                        'desconto' => (float)$item->desconto,
+                        'acrescimo' => (float)$item->acrescimo,
+                        'frete' => (float)$item->frete,
+                    ];
+                    $linhasItens = $this->linhasResumoAlteracaoItens($itensAntes, $itensDepois);
+                    $linhasCab = $this->linhasResumoCabecalhoVenda($cabecalhoAntes, $cabecalhoDepois);
+                    $descricaoAlteracao = $this->montarDescricaoAlteracaoVenda(
+                        $linhasItens,
+                        $linhasCab,
+                        $virouAlteracaoPendente,
+                        $statusAntes
+                    );
+                    $this->registrarAuditoriaVenda(
+                        $item->id,
+                        'venda_alterada',
+                        $descricaoAlteracao,
+                        [
+                            'status_pedido_antes' => $statusAntes,
+                            'status_pedido_depois' => $item->status_pedido,
+                            'itens_antes' => $itensAntes,
+                            'itens_depois' => $itensDepois,
+                        ]
+                    );
+                    $this->registrarMovimentacoesEdicaoVenda($item, $itensAntes, $itensDepois);
+                    return ['virou_alteracao' => $virouAlteracaoPendente];
                 });
+                if (!empty($result['virou_alteracao'])) {
+                    session()->flash(
+                        'flash_warning',
+                        'Atenção: pedido com alteração pendente — confira os itens (separação/rota) antes de seguir.'
+                    );
+                }
                 session()->flash("flash_sucesso", "Venda atualizada com sucesso!");
             } catch (\Exception $e) {
-                echo $e->getMessage();
-                echo $e->getLine();
-                die;
-                session()->flash("flash_erro", "Algo deu errado: " . $e->getMessage());
                 __saveLogError($e, request()->empresa_id);
+
+                return redirect()->back()->withInput()->with('flash_erro', $e->getMessage());
             }
         }
+
         return redirect()->route('vendas.index');
+    }
+
+    /**
+     * Mensagem legível de estoque insuficiente (nome do produto + quantidades).
+     */
+    private function mensagemEstoqueInsuficiente(int $pid, float $available, float $sum): string
+    {
+        $p = Produto::find($pid);
+        $nome = $p ? $p->nome : 'Produto #' . $pid;
+        $fmt = static function ($v) {
+            $s = number_format((float) $v, 4, ',', '.');
+
+            return rtrim(rtrim($s, '0'), ',') ?: '0';
+        };
+
+        return 'Estoque insuficiente para "' . $nome . '" (cód. ' . $pid . '). Disponível: ' . $fmt($available) . '. Solicitado: ' . $fmt($sum) . '.';
     }
 
     private function revertStock($itens)
     {
         $stockMove = new StockMove();
+        $filialRaw = $itens[0]->venda->filial_id ?? null;
+        $filialPlu = ($filialRaw !== null && (int) $filialRaw > 0) ? (int) $filialRaw : -1;
+
         foreach ($itens as $i) {
             $stockMove->pluStock(
                 $i->produto_id,
-                __convert_value_bd($i->quantidade),
-                $itens[0]->venda->filial_id
+                (float) __convert_value_bd($i->quantidade),
+                -1,
+                $filialPlu
             );
         }
     }
@@ -638,7 +792,16 @@ class VendaController extends Controller
         if (!__valida_objeto($item)) {
             abort(403);
         }
-        return view('vendas.show', compact('item'));
+        $auditorias = VendaAuditoria::with('usuario')
+            ->where('venda_id', $id)
+            ->where('empresa_id', request()->empresa_id)
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get();
+
+        $usuarioAdm = (bool) optional(Usuario::find(get_id_user()))->adm;
+
+        return view('vendas.show', compact('item', 'auditorias', 'usuarioAdm'));
     }
 
     public function importacao()
@@ -651,6 +814,10 @@ class VendaController extends Controller
         $item = Venda::findOrFail($id);
         if (!__valida_objeto($item)) {
             abort(403);
+        }
+        if ($item->fechada_caixa) {
+            session()->flash('flash_erro', 'Esta venda está fechada no caixa e não pode ser excluída.');
+            return redirect()->route('vendas.index');
         }
         try {
             $this->revertStock($item->itens);
@@ -822,12 +989,66 @@ class VendaController extends Controller
         }
     }
 
+    public function printStatusJson($id)
+    {
+        $item = Venda::findOrFail($id);
+        if (!__valida_objeto($item)) {
+            return response()->json(['message' => 'Acesso negado.'], 403);
+        }
+        $this->aplicarTransicaoImpressaoPedido($item);
+        $item->refresh();
+
+        return response()->json([
+            'ok' => true,
+            'status_pedido' => $item->status_pedido,
+            'status_pagamento' => $item->status_pagamento,
+        ]);
+    }
+
+    /**
+     * Confirmação → em separação ao imprimir (mesma regra do PDF).
+     */
+    private function aplicarTransicaoImpressaoPedido(Venda $item): void
+    {
+        if ($item->fechada_caixa || $item->estado_emissao === 'cancelado' || $item->status_pedido === 'cancelada') {
+            return;
+        }
+        if ($item->status_pedido !== 'confirmado') {
+            return;
+        }
+        $item->status_pedido = 'em_separacao';
+        $item->save();
+        $this->registrarAuditoriaVenda(
+            $item->id,
+            'fluxo_impressao_em_separacao',
+            'Status passou para «Em separação» ao imprimir/visualizar o pedido.',
+            ['status_pedido' => $item->status_pedido]
+        );
+    }
+
     public function print($id)
     {
-        $item = Venda::find($id);
+        $item = Venda::with([
+            'cliente.cidade',
+            'itens.produto.categoria',
+            'itens.produto.subCategoria',
+            'duplicatas',
+            'usuario',
+            'vendedor_setado.funcionario',
+        ])->find($id);
         if (!__valida_objeto($item)) {
             abort(403);
         }
+        $this->aplicarTransicaoImpressaoPedido($item);
+        $item->refresh();
+        $item->load([
+            'cliente.cidade',
+            'itens.produto.categoria',
+            'itens.produto.subCategoria',
+            'duplicatas',
+            'usuario',
+            'vendedor_setado.funcionario',
+        ]);
         $config = ConfigNota::where('empresa_id', $item->empresa_id)
             ->first();
         $p = view('vendas.print', compact('config', 'item'));
@@ -839,16 +1060,56 @@ class VendaController extends Controller
         $domPdf->stream("Pedido de Venda $id.pdf", array("Attachment" => false));
     }
 
+    /**
+     * PDF apenas com a ficha de separação (não altera status do pedido).
+     */
+    public function printFichaSeparacao($id)
+    {
+        $item = Venda::with([
+            'cliente.cidade',
+            'itens.produto.categoria',
+            'itens.produto.subCategoria',
+        ])->find($id);
+        if (!__valida_objeto($item)) {
+            abort(403);
+        }
+        $config = ConfigNota::where('empresa_id', $item->empresa_id)->first();
+        $p = view('vendas.print_ficha_document', compact('config', 'item'));
+        $domPdf = new Dompdf(["enable_remote" => true]);
+        $domPdf->loadHtml($p);
+        $pdf = ob_get_clean();
+        $domPdf->setPaper("A4");
+        $domPdf->render();
+        $domPdf->stream("Ficha separação pedido $id.pdf", array("Attachment" => false));
+    }
+
     public function routesTxt(Request $request)
     {
         $ids = $request->input('ids', []);
         if (!is_array($ids) || count($ids) == 0) {
             return response()->json(['message' => 'Sem ids'], 400);
         }
+        $confirmarAlteracoes = (bool) $request->input('confirmar_alteracoes', false);
         $vendas = Venda::with(['cliente', 'duplicatas'])
             ->whereIn('id', $ids)
             ->where('empresa_id', request()->empresa_id)
             ->get();
+
+        $pendentesAlteracao = $vendas->filter(function ($v) {
+            return $v->status_pedido === 'alteracao_pendente';
+        });
+        if ($pendentesAlteracao->count() > 0 && !$confirmarAlteracoes) {
+            return response()->json([
+                'needs_confirmation' => true,
+                'message' => 'Existem vendas com alteração pendente de conferência física. Confirme para gerar a rota.',
+            ], 422);
+        }
+
+        foreach ($vendas as $v) {
+            if ($v->fechada_caixa) {
+                return response()->json(['message' => 'A venda #' . $v->id . ' está fechada no caixa.'], 423);
+            }
+        }
 
         $vendas = $vendas->sort(function ($a, $b) {
             $bairroA = $this->normalizeRouteText(optional($a->cliente)->bairro);
@@ -932,6 +1193,13 @@ class VendaController extends Controller
         }
         $content = implode("\r\n", $lines);
         $filename = "rotas-" . date('Ymd-His') . ".txt";
+
+        Venda::whereIn('id', $ids)
+            ->where('empresa_id', request()->empresa_id)
+            ->where('estado_emissao', '!=', 'cancelado')
+            ->where('status_pedido', '!=', 'cancelada')
+            ->update(['status_pedido' => 'em_rota_entrega']);
+
         return response($content)
             ->header('Content-Type', 'text/plain; charset=utf-8')
             ->header('Content-Disposition', 'attachment; filename="' . $filename . '"');
@@ -1074,7 +1342,9 @@ class VendaController extends Controller
             'cAut_cartao' => $venda->cAut_cartao,
             'cnpj_cartao' => $venda->cnpj_cartao,
             'descricao_pag_outros' => $venda->descricao_pag_outros,
-            'filial_id' => $venda->filial_id
+            'filial_id' => $venda->filial_id,
+            'status_pedido' => 'aguardando_confirmacao',
+            'status_pagamento' => 'pendente',
         ];
 
         $result = Venda::create($novaVenda);
@@ -1157,5 +1427,477 @@ class VendaController extends Controller
 
         session()->flash("flash_sucesso", "Venda duplicada com sucesso!");
         return redirect()->route('vendas.index');
+    }
+
+    private function usuarioEhAdministrador(): bool
+    {
+        $u = Usuario::find(get_id_user());
+
+        return $u && (bool) $u->adm;
+    }
+
+    public function workflowStatus(Request $request)
+    {
+        $request->validate([
+            'venda_id' => 'required|integer',
+            'acao' => 'required|string|in:confirmar_pedido,marcar_separado,confirmar_alteracao,marcar_pago',
+        ]);
+        $v = Venda::findOrFail($request->venda_id);
+        if (!__valida_objeto($v)) {
+            abort(403);
+        }
+        if ($v->fechada_caixa) {
+            return response()->json(['message' => 'Venda fechada no caixa.'], 423);
+        }
+        $acao = $request->acao;
+        if ($acao === 'confirmar_pedido') {
+            if ($v->status_pedido !== 'aguardando_confirmacao') {
+                return response()->json(['message' => 'Transição inválida para esta venda.'], 400);
+            }
+            $v->status_pedido = 'confirmado';
+        } elseif ($acao === 'marcar_separado') {
+            if ($v->status_pedido !== 'em_separacao') {
+                return response()->json(['message' => 'Só é possível marcar como separado quando o status for "Em separação".'], 400);
+            }
+            $v->status_pedido = 'separado';
+        } elseif ($acao === 'confirmar_alteracao') {
+            if ($v->status_pedido !== 'alteracao_pendente') {
+                return response()->json(['message' => 'Esta venda não está com alteração pendente.'], 400);
+            }
+            $v->status_pedido = 'separado';
+        } elseif ($acao === 'marcar_pago') {
+            if ($v->status_pagamento !== 'pendente') {
+                return response()->json(['message' => 'O pagamento já foi registrado.'], 400);
+            }
+            $v->status_pagamento = 'pago';
+        }
+        $v->save();
+
+        $rotulosWorkflow = [
+            'confirmar_pedido' => 'Pedido confirmado (fluxo de separação).',
+            'marcar_separado' => 'Marcado como separado.',
+            'confirmar_alteracao' => 'Alteração conferida — voltou para separado.',
+            'marcar_pago' => 'Pagamento registrado como pago.',
+        ];
+        $this->registrarAuditoriaVenda(
+            $v->id,
+            'workflow_' . $acao,
+            $rotulosWorkflow[$acao] ?? $acao,
+            [
+                'status_pedido' => $v->status_pedido,
+                'status_pagamento' => $v->status_pagamento,
+            ]
+        );
+
+        return response()->json([
+            'ok' => true,
+            'status_pedido' => $v->status_pedido,
+            'status_pagamento' => $v->status_pagamento,
+        ]);
+    }
+
+    public function workflowMarcarEntregue(Request $request)
+    {
+        $request->validate(['ids' => 'required|array', 'ids.*' => 'integer']);
+        foreach ($request->ids as $id) {
+            $v = Venda::find($id);
+            if (!$v || !__valida_objeto($v) || $v->fechada_caixa) {
+                continue;
+            }
+            if ($v->status_pedido === 'em_rota_entrega') {
+                $v->status_pedido = 'entregue';
+                $v->save();
+                $this->registrarAuditoriaVenda(
+                    $v->id,
+                    'workflow_marcar_entregue',
+                    'Pedido marcado como entregue.',
+                    ['status_pedido' => $v->status_pedido]
+                );
+            }
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function fecharCaixa($id)
+    {
+        if (!$this->usuarioEhAdministrador()) {
+            abort(403);
+        }
+        $v = Venda::findOrFail($id);
+        if (!__valida_objeto($v)) {
+            abort(403);
+        }
+        if ($v->fechada_caixa) {
+            return response()->json(['message' => 'Esta venda já está fechada.'], 400);
+        }
+        $v->fechada_caixa = true;
+        $v->fechada_em = now();
+        $v->fechada_por_usuario_id = get_id_user();
+        $v->save();
+
+        $this->registrarAuditoriaVenda(
+            $v->id,
+            'caixa_fechada',
+            'Venda fechada no caixa (ADM).',
+            ['fechada_em' => $v->fechada_em ? $v->fechada_em->toIso8601String() : null]
+        );
+
+        return response()->json([
+            'ok' => true,
+            'fechada_em_label' => $v->fechada_em ? __data_pt($v->fechada_em, 1) : null,
+        ]);
+    }
+
+    /**
+     * ADM: reverte o fechamento no caixa para permitir edição / exclusão / workflow novamente.
+     */
+    public function reabrirCaixa($id)
+    {
+        if (!$this->usuarioEhAdministrador()) {
+            abort(403);
+        }
+        $v = Venda::findOrFail($id);
+        if (!__valida_objeto($v)) {
+            abort(403);
+        }
+        if (!$v->fechada_caixa) {
+            return response()->json(['message' => 'Esta venda não está fechada no caixa.'], 400);
+        }
+        $v->fechada_caixa = false;
+        $v->fechada_em = null;
+        $v->fechada_por_usuario_id = null;
+        $v->save();
+
+        $this->registrarAuditoriaVenda(
+            $v->id,
+            'caixa_reaberta',
+            'Venda reaberta no caixa (ADM) — edições permitidas novamente.',
+            []
+        );
+
+        return response()->json(['ok' => true]);
+    }
+
+    private function registrarAuditoriaVenda(int $vendaId, string $acao, string $descricao, array $meta = []): void
+    {
+        VendaAuditoria::create([
+            'empresa_id' => request()->empresa_id,
+            'venda_id' => $vendaId,
+            'usuario_id' => get_id_user(),
+            'acao' => $acao,
+            'descricao' => mb_substr($descricao, 0, 512),
+            'meta' => !empty($meta) ? $meta : null,
+        ]);
+    }
+
+    /**
+     * @param \Illuminate\Support\Collection|\Illuminate\Database\Eloquent\Collection $itens
+     */
+    private function itensParaAuditoria($itens): array
+    {
+        $out = [];
+        foreach ($itens as $i) {
+            $out[] = [
+                'produto_id' => (int)$i->produto_id,
+                'nome' => optional($i->produto)->nome ?? ('#' . $i->produto_id),
+                'quantidade' => (float)$i->quantidade,
+                'valor_unit' => (float)$i->valor,
+            ];
+        }
+
+        return $out;
+    }
+
+    private function itensDepoisFromRequest(Request $request): array
+    {
+        $out = [];
+        for ($i = 0; $i < sizeof($request->produto_id); $i++) {
+            $pid = (int)$request->produto_id[$i];
+            $p = Produto::find($pid);
+            $out[] = [
+                'produto_id' => $pid,
+                'nome' => $p ? $p->nome : ('#' . $pid),
+                'quantidade' => (float)__convert_value_bd($request->quantidade[$i]),
+                'valor_unit' => (float)__convert_value_bd($request->valor_unitario[$i]),
+            ];
+        }
+
+        return $out;
+    }
+
+    private function labelStatusPedidoVenda(string $st): string
+    {
+        $map = [
+            'aguardando_confirmacao' => 'Aguardando confirmação',
+            'confirmado' => 'Confirmado',
+            'em_separacao' => 'Em separação',
+            'separado' => 'Separado',
+            'alteracao_pendente' => 'Alteração pendente',
+            'em_rota_entrega' => 'Em rota de entrega',
+            'entregue' => 'Entregue',
+            'cancelada' => 'Cancelada',
+        ];
+
+        return $map[$st] ?? $st;
+    }
+
+    /**
+     * Agrupa linhas pelo mesmo produto e mesmo preço unitário (evita misturar linhas com preços diferentes).
+     *
+     * @return array<string, array{produto_id:int,nome:string,qtd:float,vu:float}>
+     */
+    private function agregarItensAuditoriaPorProdutoEValor(array $rows): array
+    {
+        $m = [];
+        foreach ($rows as $r) {
+            $pid = (int)$r['produto_id'];
+            $vu = round((float)($r['valor_unit'] ?? 0), 4);
+            $key = $pid . '|' . sprintf('%.4f', $vu);
+            if (!isset($m[$key])) {
+                $m[$key] = [
+                    'produto_id' => $pid,
+                    'nome' => $r['nome'] ?? ('#' . $pid),
+                    'qtd' => 0.0,
+                    'vu' => $vu,
+                ];
+            }
+            $m[$key]['qtd'] += (float)$r['quantidade'];
+        }
+
+        return $m;
+    }
+
+    /**
+     * @return string[]
+     */
+    private function linhasResumoAlteracaoItens(array $antes, array $depois): array
+    {
+        $aggAntes = $this->agregarItensAuditoriaPorProdutoEValor($antes);
+        $aggDepois = $this->agregarItensAuditoriaPorProdutoEValor($depois);
+        $keys = array_unique(array_merge(array_keys($aggAntes), array_keys($aggDepois)));
+        sort($keys, SORT_STRING);
+        $linhas = [];
+        foreach ($keys as $key) {
+            $a = $aggAntes[$key] ?? null;
+            $d = $aggDepois[$key] ?? null;
+            $nome = $this->nomeProdutoResumido($a['nome'] ?? $d['nome'] ?? 'produto');
+            if ($a && !$d) {
+                $linhas[] = 'Retirou: ' . $nome . ' — ' . $this->fmtQtdAuditoria($a['qtd']) . ' un.'
+                    . ' (unit. R$ ' . __moeda($a['vu']) . ').';
+
+                continue;
+            }
+            if (!$a && $d) {
+                $linhas[] = 'Adicionou: ' . $nome . ' — ' . $this->fmtQtdAuditoria($d['qtd']) . ' un.'
+                    . ' (unit. R$ ' . __moeda($d['vu']) . ').';
+
+                continue;
+            }
+            if ($a && $d) {
+                $dq = abs($a['qtd'] - $d['qtd']) > 0.0001;
+                $dv = abs($a['vu'] - $d['vu']) > 0.0001;
+                if ($dq) {
+                    $linhas[] = 'Alterou quantidade de ' . $nome . ': de ' . $this->fmtQtdAuditoria($a['qtd'])
+                        . ' para ' . $this->fmtQtdAuditoria($d['qtd']) . ' un. (unit. R$ ' . __moeda($d['vu']) . ').';
+                }
+                if ($dv) {
+                    $linhas[] = 'Alterou preço unitário de ' . $nome . ': de R$ ' . __moeda($a['vu'])
+                        . ' para R$ ' . __moeda($d['vu']) . '.';
+                }
+            }
+        }
+
+        return $linhas;
+    }
+
+    /**
+     * @param array{desconto:float,acrescimo:float,frete:float} $antes
+     * @param array{desconto:float,acrescimo:float,frete:float} $depois
+     *
+     * @return string[]
+     */
+    private function linhasResumoCabecalhoVenda(array $antes, array $depois): array
+    {
+        $linhas = [];
+        $cmp = static function (float $x, float $y): bool {
+            return abs($x - $y) > 0.009;
+        };
+        if ($cmp($antes['desconto'], $depois['desconto'])) {
+            $linhas[] = 'Alterou desconto: de R$ ' . __moeda($antes['desconto']) . ' para R$ ' . __moeda($depois['desconto']) . '.';
+        }
+        if ($cmp($antes['acrescimo'], $depois['acrescimo'])) {
+            $linhas[] = 'Alterou acréscimo: de R$ ' . __moeda($antes['acrescimo']) . ' para R$ ' . __moeda($depois['acrescimo']) . '.';
+        }
+        if ($cmp($antes['frete'], $depois['frete'])) {
+            $linhas[] = 'Alterou frete: de R$ ' . __moeda($antes['frete']) . ' para R$ ' . __moeda($depois['frete']) . '.';
+        }
+
+        return $linhas;
+    }
+
+    /**
+     * @param string[] $linhasItens
+     * @param string[] $linhasCab
+     */
+    private function montarDescricaoAlteracaoVenda(array $linhasItens, array $linhasCab, bool $virouAlteracaoPendente, string $statusAntes): string
+    {
+        $partes = array_merge($linhasItens, $linhasCab);
+        if ($partes === []) {
+            $texto = 'Salvou a venda sem mudanças detectáveis nos itens nem em desconto/frete/acréscimo.';
+        } else {
+            $texto = implode("\n", $partes);
+        }
+        if ($virouAlteracaoPendente) {
+            $texto .= "\n" . 'Pedido voltou para alteração pendente (estava: ' . $this->labelStatusPedidoVenda($statusAntes) . ').';
+        }
+
+        return $texto;
+    }
+
+    private function nomeProdutoResumido(string $nome): string
+    {
+        $nome = trim($nome);
+        if ($nome === '') {
+            return 'produto';
+        }
+        if (function_exists('mb_strlen') && mb_strlen($nome) > 48) {
+            return mb_substr($nome, 0, 45) . '…';
+        }
+        if (strlen($nome) > 48) {
+            return substr($nome, 0, 45) . '…';
+        }
+
+        return $nome;
+    }
+
+    private function fmtQtdAuditoria(float $q): string
+    {
+        if (abs($q - round($q)) < 0.0001) {
+            return (string)(int)round($q);
+        }
+
+        return rtrim(rtrim(number_format($q, 4, ',', ''), '0'), ',') ?: '0';
+    }
+
+    /**
+     * Gera movimentações de estoque para ajustes na edição de venda.
+     * Ex.: "Venda #4013: LATTAFA ASAD eram 2, estornou 1 e ficou 1."
+     */
+    private function registrarMovimentacoesEdicaoVenda(Venda $venda, array $itensAntes, array $itensDepois): void
+    {
+        $antes = $this->agruparQtdPorProdutoAuditoria($itensAntes);
+        $depois = $this->agruparQtdPorProdutoAuditoria($itensDepois);
+        $valorAntes = $this->agruparValorUnitPorProdutoAuditoria($itensAntes);
+        $valorDepois = $this->agruparValorUnitPorProdutoAuditoria($itensDepois);
+        $produtoIds = array_unique(array_merge(array_keys($antes), array_keys($depois)));
+
+        foreach ($produtoIds as $pid) {
+            $qAntes = (float) ($antes[$pid]['quantidade'] ?? 0);
+            $qDepois = (float) ($depois[$pid]['quantidade'] ?? 0);
+            if (abs($qAntes - $qDepois) < 0.0001) {
+                continue;
+            }
+
+            $deltaEstoque = $qAntes - $qDepois; // >0 estorno (volta estoque), <0 saída adicional
+            $filialId = $venda->filial_id;
+            $qEst = Estoque::where('produto_id', $pid);
+            if ($filialId !== null && (int) $filialId > 0) {
+                $qEst->where('filial_id', $filialId);
+            }
+            $estoqueFinal = (float) ($qEst->value('quantidade') ?? 0);
+            $estoqueAnterior = $estoqueFinal - $deltaEstoque;
+
+            $nome = $antes[$pid]['nome'] ?? $depois[$pid]['nome'] ?? ('Produto #' . $pid);
+            $qMudou = abs($qAntes - $qDepois);
+            $valorUnit = $valorDepois[$pid] ?? $valorAntes[$pid] ?? 0.0;
+            if ($deltaEstoque > 0) {
+                $obs = 'Venda #' . $venda->id . ' | ' . $nome
+                    . ': eram ' . $this->fmtQtdAuditoria($qAntes)
+                    . ', estornou ' . $this->fmtQtdAuditoria($qMudou)
+                    . ', ficou ' . $this->fmtQtdAuditoria($qDepois)
+                    . ' | novo estoque: ' . $this->fmtQtdAuditoria($estoqueFinal) . ' un.'
+                    . ' | vl unit R$ ' . __moeda($valorUnit);
+                $tipo = '1';
+                $acao = 'edicao_venda_estorno';
+            } else {
+                $obs = 'Venda #' . $venda->id . ' | ' . $nome
+                    . ': eram ' . $this->fmtQtdAuditoria($qAntes)
+                    . ', adicionou ' . $this->fmtQtdAuditoria($qMudou)
+                    . ', ficou ' . $this->fmtQtdAuditoria($qDepois)
+                    . ' | novo estoque: ' . $this->fmtQtdAuditoria($estoqueFinal) . ' un.'
+                    . ' | vl unit R$ ' . __moeda($valorUnit);
+                $tipo = '2';
+                $acao = 'edicao_venda_saida';
+            }
+
+            AlteracaoEstoque::create([
+                'empresa_id' => $venda->empresa_id,
+                'usuario_id' => get_id_user(),
+                'produto_id' => (int) $pid,
+                'quantidade' => $qMudou,
+                'observacao' => mb_substr($obs, 0, 200),
+                'tipo' => $tipo,
+                'acao' => $acao,
+                'origem' => 'venda',
+                'origem_id' => $venda->id,
+                'pedido_id' => $venda->id,
+                'estoque_anterior' => $estoqueAnterior,
+                'estoque_novo' => $estoqueFinal,
+            ]);
+        }
+    }
+
+    /**
+     * @return array<int, array{quantidade:float,nome:string}>
+     */
+    private function agruparQtdPorProdutoAuditoria(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $r) {
+            $pid = (int) ($r['produto_id'] ?? 0);
+            if ($pid <= 0) {
+                continue;
+            }
+            if (!isset($out[$pid])) {
+                $out[$pid] = [
+                    'quantidade' => 0.0,
+                    'nome' => (string) ($r['nome'] ?? ('Produto #' . $pid)),
+                ];
+            }
+            $out[$pid]['quantidade'] += (float) ($r['quantidade'] ?? 0);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Média ponderada do valor unitário por produto.
+     *
+     * @return array<int, float>
+     */
+    private function agruparValorUnitPorProdutoAuditoria(array $rows): array
+    {
+        $sumQtd = [];
+        $sumValor = [];
+        foreach ($rows as $r) {
+            $pid = (int) ($r['produto_id'] ?? 0);
+            if ($pid <= 0) {
+                continue;
+            }
+            $q = (float) ($r['quantidade'] ?? 0);
+            $vu = (float) ($r['valor_unit'] ?? 0);
+            $sumQtd[$pid] = ($sumQtd[$pid] ?? 0) + $q;
+            $sumValor[$pid] = ($sumValor[$pid] ?? 0) + ($q * $vu);
+        }
+        $out = [];
+        foreach ($sumQtd as $pid => $qTot) {
+            if (abs((float) $qTot) < 0.0001) {
+                continue;
+            }
+            $out[$pid] = ((float) ($sumValor[$pid] ?? 0)) / (float) $qTot;
+        }
+
+        return $out;
     }
 }

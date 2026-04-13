@@ -84,20 +84,26 @@ class ProdutoGrade
 
 			$produto = Produto::create($request->all());
 
+			$qtdGrade = __convert_value_bd($request->quantidade_grade[$i]);
+			$stockMove = new StockMove();
+			$stockMove->pluStock($produto->id, $qtdGrade);
+			$estoqueDepois = Estoque::where('produto_id', $produto->id)
+				->whereNull('filial_id')
+				->first();
+			$estoqueNovo = $estoqueDepois ? (float) $estoqueDepois->quantidade : 0;
+
 			AlteracaoEstoque::create([
 				'produto_id' => $produto->id,
 				'usuario_id' => get_id_user(),
-				'quantidade' => $request->quantidade_grade[$i],
-				'tipo' => 'incremento',
-				'observacao' => '',
-				'empresa_id' => $request->empresa_id
+				'quantidade' => $qtdGrade,
+				'tipo' => 1,
+				'observacao' => 'Inclusão de estoque na criação da grade.',
+				'empresa_id' => $request->empresa_id,
+				'acao' => 'grade_cadastro',
+				'origem' => 'produto_grade',
+				'estoque_anterior' => 0,
+				'estoque_novo' => $estoqueNovo,
 			]);
-
-			$stockMove = new StockMove();
-			$result = $stockMove->pluStock(
-				$produto->id,
-				__convert_value_bd($request->quantidade_grade[$i]),
-			);
 
 			if ($request->delivery) {
 				$this->salvarProdutoNoDelivery($request, $produto, $file_name);
@@ -264,21 +270,32 @@ class ProdutoGrade
 					$estoque = __convert_value_bd($comb->quantidade);
 
 					if ($estoque > 0) {
-						$data = [
-							'produto_id' => $produto->id,
-							'usuario_id' => get_id_user(),
-							'quantidade' => $estoque,
-							'tipo' => 'incremento',
-							'observacao' => '',
-							'empresa_id' => $request->empresa_id
-						];
-						AlteracaoEstoque::create($data);
+						$estoqueAntesRow = Estoque::where('produto_id', $produto->id)
+							->whereNull('filial_id')
+							->first();
+						$estoqueAntes = $estoqueAntesRow ? (float) $estoqueAntesRow->quantidade : 0;
 						$stockMove = new StockMove();
-						$result = $stockMove->pluStock(
+						$stockMove->pluStock(
 							$produto->id,
 							$estoque,
 							str_replace(",", ".", $produto->valor_venda)
 						);
+						$estoqueDepois = Estoque::where('produto_id', $produto->id)
+							->whereNull('filial_id')
+							->first();
+						$estoqueNovo = $estoqueDepois ? (float) $estoqueDepois->quantidade : 0;
+						AlteracaoEstoque::create([
+							'produto_id' => $produto->id,
+							'usuario_id' => get_id_user(),
+							'quantidade' => $estoque,
+							'tipo' => 1,
+							'observacao' => 'Inclusão de estoque na atualização da grade.',
+							'empresa_id' => $request->empresa_id,
+							'acao' => 'grade_atualizacao',
+							'origem' => 'produto_grade',
+							'estoque_anterior' => $estoqueAntes,
+							'estoque_novo' => $estoqueNovo,
+						]);
 					}
 				} catch (\Exception $e) {
 					echo $e->getMessage();

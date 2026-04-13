@@ -1,4 +1,4 @@
-<div class="col-md-3 col-12 mt-3">
+<div class="{{ $wrapperClass ?? 'col-md-3 col-12 mt-3' }}">
 	<label>{{$lbl}}</label>
 	<select id="locais" name="filial_id" class="form-select">
         <option value="todos">Todos</option>

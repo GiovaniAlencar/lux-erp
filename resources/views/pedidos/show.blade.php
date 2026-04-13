@@ -14,6 +14,78 @@
                     <h5>Observação: {{$item->observacao }}</h5>
                 </div>
             </div>
+
+            <div class="card border-top border-0 border-3 border-primary mb-3">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                        <h5 class="mb-0 text-primary">Situação da comanda</h5>
+                        <a href="{{ route('pedidos.verDetalhes', $item->id) }}" class="btn btn-outline-secondary btn-sm" target="_blank">
+                            <i class="bx bx-file"></i> Itens removidos e auditoria completa
+                        </a>
+                    </div>
+                    <p class="mb-2">
+                        <span class="badge bg-info me-1">Pedido:
+                            {{ $opcoesStatusPedido[$item->status_pedido ?? 'aberto'] ?? ($item->status_pedido ?? '—') }}</span>
+                        <span class="badge bg-dark">Pagamento:
+                            {{ $opcoesStatusPagamento[$item->status_pagamento ?? 'pendente'] ?? ($item->status_pagamento ?? '—') }}</span>
+                    </p>
+                    <form action="{{ route('pedidos.atualizarStatusComanda', $item->id) }}" method="post" class="row g-2 align-items-end">
+                        @csrf
+                        <div class="col-md-4">
+                            <label class="form-label">Status do pedido</label>
+                            <select name="status_pedido" class="form-select" required>
+                                @foreach($opcoesStatusPedido as $val => $lbl)
+                                <option value="{{ $val }}" @if(old('status_pedido', $item->status_pedido ?? 'aberto') == $val) selected @endif>{{ $lbl }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Status do pagamento</label>
+                            <select name="status_pagamento" class="form-select" required>
+                                @foreach($opcoesStatusPagamento as $val => $lbl)
+                                <option value="{{ $val }}" @if(old('status_pagamento', $item->status_pagamento ?? 'pendente') == $val) selected @endif>{{ $lbl }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <button type="submit" class="btn btn-primary w-100"><i class="bx bx-save"></i> Salvar status</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card border-top border-0 border-3 border-secondary mb-3">
+                <div class="card-body">
+                    <h5 class="text-secondary mb-3"><i class="bx bx-history"></i> Auditoria recente</h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Quando</th>
+                                    <th>Ação</th>
+                                    <th>Descrição</th>
+                                    <th>Usuário</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse($auditorias as $a)
+                                <tr>
+                                    <td>{{ \Carbon\Carbon::parse($a->created_at)->format('d/m/Y H:i') }}</td>
+                                    <td><code>{{ $a->acao }}</code></td>
+                                    <td>{{ $a->descricao }}</td>
+                                    <td>{{ $a->usuario ? $a->usuario->nome : '—' }}</td>
+                                </tr>
+                                @empty
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted">Ainda não há registros de auditoria para esta comanda.</td>
+                                </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <input type="hidden" id="adicionais-inp" value="{{json_encode($adicionais)}}" name="">
 
             <div class="card border-top border-0 border-3 border-success">

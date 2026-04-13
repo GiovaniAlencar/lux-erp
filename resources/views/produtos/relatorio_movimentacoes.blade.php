@@ -15,7 +15,7 @@
 			<th width="100">QUANTIDADE</th>
 			<th width="100">VALOR</th>
 			<th width="100">DATA</th>
-			<!-- <th width="150">ITENS VENDIDOS</th> -->
+			<th width="280">DETALHES</th>
 		</tr>
 	</thead>
 
@@ -27,6 +27,13 @@
 			<td>{{number_format($m['valor'], 2, ',', '.')}}</td>
 			<td>
 				{{ \Carbon\Carbon::parse($m['data'])->format('d/m/Y H:i:s') }}
+			</td>
+			<td style="font-size: 9px; vertical-align: top;">
+				@if(!empty($m['linhas_detalhe']) && is_array($m['linhas_detalhe']))
+					{{ collect($m['linhas_detalhe'])->filter(fn($linha) => trim((string) $linha) !== '')->implode(' | ') }}
+				@else
+					{{ $m['observacao'] ?? '' }}
+				@endif
 			</td>
 		</tr>
 		@endforeach

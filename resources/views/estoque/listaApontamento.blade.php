@@ -19,6 +19,7 @@
                                     <th>Quantidade Alterada</th>
                                     <th>Observação</th>
                                     <th>Tipo</th>
+                                    <th>Estoque ant. / novo</th>
                                     <th>Usuário</th>
                                     <th>Data</th>
                                     <th>Ações</th>
@@ -32,6 +33,13 @@
                                         <td>{{ __estoque($item->quantidade) }}</td>
                                         <td>{{ $item->observacao }}</td>
                                         <td>{{ $item->tipo == 0 ? 'Redução Estoque' : 'Incremento Estoque' }}</td>
+                                        <td>
+                                            @if($item->estoque_anterior !== null && $item->estoque_novo !== null)
+                                                {{ __estoque($item->estoque_anterior) }} → {{ __estoque($item->estoque_novo) }}
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
                                         <td>{{ $item->usuario->nome }}</td>
                                         <td>{{ __data_pt($item->created_at, 0) }}</td>
                                         <td>
@@ -47,7 +55,7 @@
                                     </tr>
                                     @empty
                                     <tr>
-                                        <td colspan="8" class="text-center">Nada encontrado</td>
+                                        <td colspan="9" class="text-center">Nada encontrado</td>
                                     </tr>
                                 @endforelse
                             </tbody>

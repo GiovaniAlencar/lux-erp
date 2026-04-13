@@ -4,6 +4,14 @@
     <div class="card border-top border-0 border-3 border-success">
         <div class="card-body p-4">
             <div class="col-sm-12 col-lg-12 col-md-12 col-xl-12">
+                <div class="mb-3">
+                    <h4 class="d-inline">Comanda {{ $pedido->comanda ?? $pedido->id }}</h4>
+                    <span class="badge bg-primary ms-2">Pedido:
+                        {{ $opcoesStatusPedido[$pedido->status_pedido ?? 'aberto'] ?? ($pedido->status_pedido ?? '—') }}</span>
+                    <span class="badge bg-secondary ms-1">Pagamento:
+                        {{ $opcoesStatusPagamento[$pedido->status_pagamento ?? 'pendente'] ?? ($pedido->status_pagamento ?? '—') }}</span>
+                    <a href="{{ route('pedidos.show', $pedido->id) }}" class="btn btn-sm btn-outline-primary ms-2">Voltar à comanda</a>
+                </div>
                 <h4>Itens Da Comanda</h4>
                 <div class="col-xl-12">
                     <div class="table-responsive">
@@ -121,6 +129,37 @@
                                     <td>{{ \Carbon\Carbon::parse($r->updated_at)->format('d/m/Y H:i:s')}}</td>
                                 </tr>
                                 @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <br>
+                <hr><br>
+                <h4>Auditoria do Pedido</h4>
+                <div class="col-xl-12">
+                    <div class="table-reponsive">
+                        <table class="table mb-0 table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Ação</th>
+                                    <th>Descrição</th>
+                                    <th>Usuário</th>
+                                    <th>Data</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse($auditorias as $a)
+                                <tr>
+                                    <td>{{ $a->acao }}</td>
+                                    <td>{{ $a->descricao }}</td>
+                                    <td>{{ $a->usuario ? $a->usuario->nome : 'Sistema' }}</td>
+                                    <td>{{ \Carbon\Carbon::parse($a->created_at)->format('d/m/Y H:i:s')}}</td>
+                                </tr>
+                                @empty
+                                <tr>
+                                    <td colspan="4" class="text-center">Nenhum registro de auditoria ainda.</td>
+                                </tr>
+                                @endforelse
                             </tbody>
                         </table>
                     </div>

@@ -1,5 +1,17 @@
 @extends('default.layout',['title' => 'Produtos'])
 @section('content')
+<style>
+    .tbl-400.produtos-lista {
+        overflow-x: auto;
+        overflow-y: visible;
+    }
+    .tbl-400.produtos-lista .table {
+        overflow: visible;
+    }
+    .produto-acoes-menu {
+        z-index: 2200;
+    }
+</style>
 <div class="page-content">
     <div class="card ">
         <div class="card-body p-4">
@@ -65,7 +77,7 @@
                 <hr />
                 <div class="card">
                     <div class="card-body">
-                        <div class="table-responsive tbl-400">
+                        <div class="table-responsive tbl-400 produtos-lista">
                             <table class="table mb-0 table-striped">
                                 <thead class="">
                                     <tr>
@@ -90,30 +102,27 @@
                                         <td>
                                             <div class="dropdown">
                                                 <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Ações</button>
-                                                <ul class="dropdown-menu" style="z-index: 999">
-                                                    <form action="{{ route('produtos.destroy', $p->id) }}" method="post" id="form-{{$p->id}}">
-                                                        @method('delete')
-                                                        @csrf
-                                                        <li>
-                                                            <a class="dropdown-item" href="{{ route('produtos.edit', $p->id) }}">Editar</a>
-                                                        </li>
-
-                                                        <li>
-                                                            <button class="dropdown-item btn-delete">Apagar</button>
-                                                        </li>
-
-                                                        <li>
-                                                            <a class="dropdown-item" href="{{ route('produtos.movimentacao', $p->id) }}">Movimentação</a>
-                                                        </li>
-
-                                                        <li>
-                                                            <a class="dropdown-item" href="{{ route('produtos.duplicar' ,$p->id) }}">Duplicar Produto</a>
-                                                        </li>
-
-                                                        <li>
-                                                            <a class="dropdown-item" href="{{ route('produtos.etiqueta', $p->id) }}">Código de Barras</a>
-                                                        </li>
-                                                    </form>
+                                                <ul class="dropdown-menu dropdown-menu-end produto-acoes-menu">
+                                                    <li>
+                                                        <a class="dropdown-item" href="{{ route('produtos.edit', $p->id) }}">Editar</a>
+                                                    </li>
+                                                    <li>
+                                                        <a class="dropdown-item" href="{{ route('produtos.movimentacao', $p->id) }}">Movimentação</a>
+                                                    </li>
+                                                    <li>
+                                                        <a class="dropdown-item" href="{{ route('produtos.duplicar' ,$p->id) }}">Duplicar Produto</a>
+                                                    </li>
+                                                    <li>
+                                                        <a class="dropdown-item" href="{{ route('produtos.etiqueta', $p->id) }}">Código de Barras</a>
+                                                    </li>
+                                                    <li><hr class="dropdown-divider"></li>
+                                                    <li>
+                                                        <form action="{{ route('produtos.destroy', $p->id) }}" method="post" id="form-{{$p->id}}">
+                                                            @method('delete')
+                                                            @csrf
+                                                            <button type="submit" class="dropdown-item text-danger btn-delete">Apagar</button>
+                                                        </form>
+                                                    </li>
                                                 </ul>
                                             </div>
                                         </td>

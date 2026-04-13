@@ -1,12 +1,23 @@
 @extends('default.layout', ['title' => 'Editar Venda'])
+@section('css')
+<style>
+    .vendas-create-modern .lux-resumo-hint {
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        color: #475569;
+        border-left: 3px solid #94a3b8 !important;
+    }
+    .vendas-create-modern .desconto-resumo {
+        color: #334155;
+    }
+</style>
+@endsection
 @section('content')
 <div class="page-content vendas-create-modern">
-    {!!Form::open()->fill($item)
-    ->put()
-    ->route('vendas.update', [$item->id])
-    ->id('form-venda')
-    ->multipart()
-    !!}
+    @if(session()->hasOldInput())
+    {!! Form::open()->put()->route('vendas.update', [$item->id])->id('form-venda')->multipart() !!}
+    @else
+    {!! Form::open()->fill($item)->put()->route('vendas.update', [$item->id])->id('form-venda')->multipart() !!}
+    @endif
     <div class="row g-3">
         <div class="col-12 col-xxl-8">
             <div class="card">
@@ -28,7 +39,7 @@
                         <div class="mb-2 small text-muted">Subtotal</div>
                         <div class="h5 mb-3 subtotal-resumo">R$ 0,00</div>
                         <div class="mb-2 small text-muted">Desconto</div>
-                        <input type="text" class="form-control form-control-sm resumo-desconto moeda" placeholder="0,00">
+                        <div class="h5 mb-3 desconto-resumo">R$ 0,00</div>
                         <div class="mb-2 small text-muted mt-3">Total</div>
                         <div class="h4 fw-bold total-resumo">R$ 0,00</div>
                         <button type="button" class="btn btn-success w-100 mt-3 btn-venda" disabled onclick="salvar('venda')">
@@ -93,9 +104,16 @@ document.addEventListener('DOMContentLoaded', function(){
     const spanTotal = document.querySelector('.total-resumo');
     const spanSubtotal = document.querySelector('.subtotal-resumo');
     const spanQtd = document.querySelector('.qtd-itens-resumo');
-    const resumoDesc = document.querySelector('.resumo-desconto');
+    const resumoDesc = document.querySelector('.desconto-resumo');
 
     let last = { total: null, subtotal: null, qtd: null, desc: null };
+
+    function textoDescontoResumo(val) {
+        var s = (val != null ? String(val) : '').trim();
+        if (!s) s = '0,00';
+        if (s.indexOf('R$') === 0) return s;
+        return 'R$ ' + s;
+    }
 
     function syncFromForm(){
         const totalVenda = document.querySelector('.total-venda');
@@ -126,6 +144,22 @@ document.addEventListener('DOMContentLoaded', function(){
             const qtdTxt = (sumQtd.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 3 })) + ' un';
             if(last.qtd !== qtdTxt){ spanQtd.textContent = qtdTxt; last.qtd = qtdTxt; }
         }
+
+        if(tbody){
+            const rows = tbody.querySelectorAll('tr');
+            const count = Array.from(rows).filter(r => r.querySelector('td') && !r.classList.contains('empty-state')).length;
+            const empty = tbody.querySelector('.empty-state');
+            if(empty){ empty.style.display = count > 0 ? 'none' : ''; }
+        }
+
+        const formDesc = document.querySelector('input.desconto');
+        if (formDesc && resumoDesc) {
+            var dtxt = textoDescontoResumo(formDesc.value);
+            if (last.desc !== formDesc.value) {
+                resumoDesc.textContent = dtxt;
+                last.desc = formDesc.value;
+            }
+        }
     }
 
     document.addEventListener('input', function(e){
@@ -145,6 +179,18 @@ document.addEventListener('DOMContentLoaded', function(){
 <script type="text/javascript" src="/js/vendas.js"></script>
 <script type="text/javascript" src="/js/product.js"></script>
 <script type="text/javascript" src="/js/transportadora.js"></script>
+@if(session()->hasOldInput() && old('produto_id') && is_array(old('produto_id')))
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        if (typeof calcTotal === 'function') calcTotal();
+        if (typeof validateButtonSave === 'function') validateButtonSave();
+        if (typeof calcTotalPayment === 'function') calcTotalPayment();
+        if (typeof formasPagamento === 'function') formasPagamento();
+    }, 500);
+});
+</script>
+@endif
 
 
 @endsection
