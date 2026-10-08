@@ -13,7 +13,8 @@
     .produtos-lista-wrap .table { font-size: .875rem; margin-bottom: 0; }
     .produtos-lista-wrap .table td,
     .produtos-lista-wrap .table th { padding: .4rem .5rem; vertical-align: middle; white-space: nowrap; }
-    .produtos-lista-wrap .col-descricao { white-space: normal; min-width: 160px; max-width: 280px; }
+    .produtos-lista-wrap .col-descricao { white-space: normal !important; overflow-wrap: anywhere; min-width: 160px; max-width: 280px; }
+    .produtos-lista-wrap .badge-fiscal { font-size: .65rem; font-weight: 600; background: #4f46e5; color: #fff; letter-spacing: .02em; }
     .produtos-lista-wrap .col-categoria { white-space: normal; min-width: 90px; max-width: 140px; }
     .produtos-lista-wrap .img-round { width: 36px; height: 36px; object-fit: cover; }
     .produtos-lista-wrap .dropdown { position: static; }
@@ -97,6 +98,14 @@
                         <option value="ativos" @selected($statusAtual === 'ativos')>Ativos</option>
                         <option value="inativos" @selected($statusAtual === 'inativos')>Inativos</option>
                         <option value="todos" @selected($statusAtual === 'todos')>Todos</option>
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label">Fiscal</label>
+                    <select name="fiscal" class="form-select form-select-sm">
+                        <option value="" @selected(request('fiscal', '') === '')>Todos</option>
+                        <option value="1" @selected(request('fiscal') === '1')>Só fiscais</option>
+                        <option value="0" @selected(request('fiscal') === '0')>Só não fiscais</option>
                     </select>
                 </div>
                 @if(empresaComFilial())
@@ -202,6 +211,9 @@
                                 {{ $p->nome }}{{ $p->str_grade }}
                                 @if($p->inativo)
                                 <span class="badge bg-secondary badge-inativo ms-1">Inativo</span>
+                                @endif
+                                @if($p->fiscal)
+                                <div class="mt-1"><span class="badge badge-fiscal" title="NF-e emitida no outro sistema — cobrado na conta fiscal">Fiscal</span></div>
                                 @endif
                             </td>
                             <td class="col-categoria small">{{ $p->categoria->nome ?? '—' }}</td>

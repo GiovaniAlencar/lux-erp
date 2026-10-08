@@ -334,6 +334,7 @@ $(document).on('click', '#btn-open-edit-perfil', function(){
     $.get(path_url + 'api/cliente/find/' + clienteId)
         .done((res) => {
             $('#modal-perfil-cliente #inp-razao_social').val(res.razao_social || '');
+            $('#modal-perfil-cliente #inp-cpf_cnpj').val(res.cpf_cnpj || '');
             $('#modal-perfil-cliente #inp-celular').val(res.celular || '');
             $('#modal-perfil-cliente #inp-email').val(res.email || '');
         })
@@ -352,17 +353,26 @@ $(document).on('click', '#btn-update-perfil', function(){
     }
     const data = {
         razao_social: $('#modal-perfil-cliente #inp-razao_social').val(),
+        cpf_cnpj: $('#modal-perfil-cliente #inp-cpf_cnpj').val(),
         celular: $('#modal-perfil-cliente #inp-celular').val(),
         email: $('#modal-perfil-cliente #inp-email').val()
     };
     $.post(path_url + 'api/cliente/updatePerfil/' + clienteId, data)
         .done((res) => {
+            if (res && res.cpf_cnpj) {
+                const inpDoc = document.getElementById('inp-cliente_cpf_cnpj');
+                if (inpDoc) {
+                    inpDoc.value = res.cpf_cnpj;
+                    inpDoc.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
             swal("Sucesso", "Perfil atualizado!", "success")
                 .then(() => { $('#modal-perfil-cliente').modal('hide'); });
         })
         .fail((err) => {
             console.log(err);
-            swal("Erro", "Falha ao atualizar perfil.", "error");
+            const msg = (err && typeof err.responseJSON === 'string') ? err.responseJSON : "Falha ao atualizar perfil.";
+            swal("Erro", msg, "error");
         });
 });
 

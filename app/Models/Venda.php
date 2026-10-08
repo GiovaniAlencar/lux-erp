@@ -20,7 +20,8 @@ class Venda extends Model
         'modo_preco_arabes', 'modo_preco_miniaturas', 'aviso_entrega',
         'versao_pedido', 'versao_ficha_impressa', 'versao_pedido_pdf',
         'ficha_impressa_em', 'pedido_pdf_em',
-        'fechada_caixa', 'fechada_em', 'fechada_por_usuario_id'
+        'fechada_caixa', 'fechada_em', 'fechada_por_usuario_id',
+        'nf_externa_status', 'nf_externa_numero', 'nf_externa_valor', 'nf_externa_em', 'nf_externa_usuario_id'
     ];
 
     protected $casts = [
@@ -28,6 +29,7 @@ class Venda extends Model
         'fechada_em' => 'datetime',
         'ficha_impressa_em' => 'datetime',
         'pedido_pdf_em' => 'datetime',
+        'nf_externa_em' => 'datetime',
     ];
 
     public function filial(){
@@ -392,6 +394,161 @@ class Venda extends Model
         } else {
             return "0,00";
         }
+    }
+
+    /**
+     * Divide o total da venda entre a conta FISCAL (itens com NF-e emitida no outro sistema)
+     * e a conta NÃO FISCAL (restante). Uso interno: vendedor e fechamento de caixa.
+     *
+     * Regras:
+     * - cada item usa a marcação "fiscal" gravada no item no momento da venda;
+     * - desconto e acréscimo são rateados proporcionalmente ao valor dos itens de cada lado;
+     * - frete vai para o NÃO FISCAL; se o pedido só tiver itens fiscais, vai para o FISCAL;
+     * - o não fiscal é calculado como (total - fiscal), então a soma sempre fecha no centavo.
+     *
+     * @return array{fiscal: float, nao_fiscal: float, total: float, itens_fiscal: float, itens_nao_fiscal: float, tem_fiscal: bool, misto: bool}
+     */
+    public function divisaoFiscal(): array
+    {
+        $itensFiscal = 0.0;
+        $itensNaoFiscal = 0.0;
+
+        foreach ($this->itens as $it) {
+            $sub = round((float) $it->valor * (float) $it->quantidade, 2);
+            if ($it->fiscal) {
+                $itensFiscal += $sub;
+            } else {
+                $itensNaoFiscal += $sub;
+            }
+        }
+
+        return self::calcularDivisaoFiscal(
+            $itensFiscal,
+            $itensNaoFiscal,
+            (float) $this->valor_total,
+            (float) ($this->desconto ?? 0),
+            (float) ($this->acrescimo ?? 0),
+            (float) ($this->frete ?? 0)
+        );
+    }
+
+    /**
+     * Regra pura da divisão (usada pela venda e pelos totais da listagem).
+     */
+    public static function calcularDivisaoFiscal(
+        float $itensFiscal,
+        float $itensNaoFiscal,
+        float $valorTotal,
+        float $desconto,
+        float $acrescimo,
+        float $frete
+    ): array {
+        $total = round($valorTotal - $desconto + $acrescimo + $frete, 2);
+
+        $baseItens = $itensFiscal + $itensNaoFiscal;
+        $proporcaoFiscal = $baseItens > 0 ? $itensFiscal / $baseItens : 0.0;
+
+        $fiscal = 0.0;
+        if ($itensFiscal > 0) {
+            $fiscal = $itensFiscal - ($desconto * $proporcaoFiscal) + ($acrescimo * $proporcaoFiscal);
+            if ($itensNaoFiscal <= 0) {
+                $fiscal += $frete;
+            }
+            $fiscal = round(max(0, $fiscal), 2);
+            if ($fiscal > $total) {
+                $fiscal = max(0, $total);
+            }
+        }
+
+        return [
+            'fiscal' => $fiscal,
+            'nao_fiscal' => round($total - $fiscal, 2),
+            'total' => $total,
+            'itens_fiscal' => round($itensFiscal, 2),
+            'itens_nao_fiscal' => round($itensNaoFiscal, 2),
+            'tem_fiscal' => $itensFiscal > 0,
+            'misto' => $itensFiscal > 0 && $itensNaoFiscal > 0,
+        ];
+    }
+
+    /**
+     * Soma a divisão fiscal de várias vendas de uma vez (1 query, sem carregar models).
+     * Recebe uma query de Venda já filtrada.
+     */
+    public static function resumoDivisaoFiscal($queryVendas): array
+    {
+        $ids = (clone $queryVendas)->reorder()->select('vendas.id');
+
+        $rows = \Illuminate\Support\Facades\DB::table('vendas as v')
+            ->leftJoin('item_vendas as iv', 'iv.venda_id', '=', 'v.id')
+            ->whereIn('v.id', $ids)
+            ->groupBy('v.id', 'v.valor_total', 'v.desconto', 'v.acrescimo', 'v.frete')
+            ->select(
+                'v.id',
+                'v.valor_total',
+                'v.desconto',
+                'v.acrescimo',
+                'v.frete',
+                \Illuminate\Support\Facades\DB::raw('COALESCE(SUM(CASE WHEN iv.fiscal = 1 THEN ROUND(iv.valor * iv.quantidade, 2) ELSE 0 END), 0) as itens_fiscal'),
+                \Illuminate\Support\Facades\DB::raw('COALESCE(SUM(CASE WHEN iv.fiscal = 1 THEN 0 ELSE ROUND(iv.valor * iv.quantidade, 2) END), 0) as itens_nao_fiscal')
+            )
+            ->get();
+
+        $res = ['fiscal' => 0.0, 'nao_fiscal' => 0.0, 'total' => 0.0, 'qtd' => 0, 'qtd_com_fiscal' => 0];
+        foreach ($rows as $r) {
+            $d = self::calcularDivisaoFiscal(
+                (float) $r->itens_fiscal,
+                (float) $r->itens_nao_fiscal,
+                (float) $r->valor_total,
+                (float) ($r->desconto ?? 0),
+                (float) ($r->acrescimo ?? 0),
+                (float) ($r->frete ?? 0)
+            );
+            $res['fiscal'] += $d['fiscal'];
+            $res['nao_fiscal'] += $d['nao_fiscal'];
+            $res['total'] += $d['total'];
+            $res['qtd']++;
+            if ($d['tem_fiscal']) {
+                $res['qtd_com_fiscal']++;
+            }
+        }
+        $res['fiscal'] = round($res['fiscal'], 2);
+        $res['nao_fiscal'] = round($res['nao_fiscal'], 2);
+        $res['total'] = round($res['total'], 2);
+
+        return $res;
+    }
+
+    /**
+     * Situação da NF-e externa: null (venda sem item fiscal), 'pendente', 'emitida' ou 'divergente'
+     * (marcada como emitida, mas o valor fiscal da venda mudou depois).
+     */
+    public function situacaoNfExterna(?array $div = null): ?string
+    {
+        $div = $div ?? $this->divisaoFiscal();
+        if (!$div['tem_fiscal']) {
+            return $this->nf_externa_status === 'emitida' ? 'divergente' : null;
+        }
+        if ($this->nf_externa_status !== 'emitida') {
+            return 'pendente';
+        }
+        if ($this->nf_externa_valor !== null && abs((float) $this->nf_externa_valor - $div['fiscal']) > 0.009) {
+            return 'divergente';
+        }
+        return 'emitida';
+    }
+
+    public function nfExternaUsuario()
+    {
+        return $this->belongsTo(Usuario::class, 'nf_externa_usuario_id');
+    }
+
+    /** Itens fiscais (para lançar a NF-e no outro sistema). */
+    public function itensFiscais()
+    {
+        return $this->itens->filter(function ($it) {
+            return (bool) $it->fiscal;
+        })->values();
     }
 
     public function valorLiquido()

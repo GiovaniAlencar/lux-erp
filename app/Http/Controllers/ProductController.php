@@ -93,6 +93,7 @@ class ProductController extends Controller
             ->selectRaw("$ultimaSaidaSql as ultima_saida_at")
             ->when($status === 'ativos', fn ($q) => $q->where('produtos.inativo', 0))
             ->when($status === 'inativos', fn ($q) => $q->where('produtos.inativo', 1))
+            ->when(in_array($request->get('fiscal'), ['0', '1'], true), fn ($q) => $q->where('produtos.fiscal', (int) $request->get('fiscal')))
             ->when(!empty($nome), function ($q) use ($nome, $tipo) {
                 if ($tipo === 'id') {
                     return is_numeric($nome)
@@ -289,6 +290,7 @@ class ProductController extends Controller
                     'preco_2' => ($request->preco_2 ?? '') !== '' ? round((float) __convert_value_bd($request->preco_2), 2) : null,
                     'preco_3' => ($request->preco_3 ?? '') !== '' ? round((float) __convert_value_bd($request->preco_3), 2) : null,
                     'reajuste_automatico' => 1,
+                    'fiscal' => $request->fiscal ? 1 : 0,
                     'referencia' => $request->referencia ?? '',
                     'estoque_inicial' => $request->estoque_inicial ?? 0,
                     'estoque_minimo' => $request->estoque_minimo ?? 0,
@@ -436,6 +438,7 @@ class ProductController extends Controller
                 'preco_3' => ($request->preco_3 ?? '') !== '' ? round((float) __convert_value_bd($request->preco_3), 2) : null,
                 'valor_compra' => round((float) __convert_value_bd($request->valor_compra), 2),
                 'reajuste_automatico' => 1,
+                'fiscal' => $request->fiscal ? 1 : 0,
                 'referencia' => $request->referencia ?? '',
                 'estoque_inicial' => $request->estoque_inicial ?? 0,
                 'estoque_minimo' => $request->estoque_minimo ?? 0,

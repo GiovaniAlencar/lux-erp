@@ -79,6 +79,12 @@
                     </div>
                 </div>
                 @endisset
+                <div class="col-md-6 mt-2 lux-doc-fiscal-box d-none">
+                    <label for="inp-cliente_cpf_cnpj" class="form-label required mb-1">CPF/CNPJ do cliente</label>
+                    <input type="text" name="cliente_cpf_cnpj" id="inp-cliente_cpf_cnpj" class="form-control cpf_cnpj"
+                        value="{{ old('cliente_cpf_cnpj', '') }}" placeholder="Obrigatório: pedido tem produto fiscal" autocomplete="off">
+                    <div class="form-text lux-doc-fiscal-hint">Pedido com produto fiscal. O documento é salvo no cadastro do cliente.</div>
+                </div>
             </div>
         </div>
     </div>

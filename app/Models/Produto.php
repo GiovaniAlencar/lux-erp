@@ -18,6 +18,7 @@ class Produto extends Model
 		'categoria_id',
 		'cor',
 		'valor_venda',
+		'fiscal',
 		'preco_2',
 		'preco_3',
 		'NCM',

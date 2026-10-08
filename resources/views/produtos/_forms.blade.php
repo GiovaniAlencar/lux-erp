@@ -286,6 +286,10 @@ $trib = $tributacao ?? null;
         <div class="col-md-4">
             {!! Form::select('inativo', 'Inativo', [0 => 'Não', 1 => 'Sim'])->attrs(['class' => 'form-select']) !!}
         </div>
+        <div class="col-md-4">
+            {!! Form::select('fiscal', 'Fiscal (NF-e emitida no outro sistema)', [0 => 'Não', 1 => 'Sim'])->attrs(['class' => 'form-select']) !!}
+            <div class="form-text">Se "Sim", o valor deste produto na venda é cobrado na conta fiscal.</div>
+        </div>
         @isset($item)
         <div class="d-none">
             {!! Form::select('grade', 'Tipo grade', [0 => 'Não', 1 => 'Sim'])->attrs(['class' => 'form-select']) !!}

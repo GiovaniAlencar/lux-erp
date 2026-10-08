@@ -51,6 +51,7 @@
                         <div class="h5 mb-3 desconto-resumo">R$ 0,00</div>
                         <div class="mb-2 small text-muted mt-3">Total</div>
                         <div class="h4 fw-bold total-resumo">R$ 0,00</div>
+                        @include('vendas.partials.resumo_contas')
                         <button type="button" class="btn btn-success w-100 mt-3 btn-venda" disabled onclick="salvar('venda')">
                             <i class="bi bi-check-circle"></i> Finalizar Pedido
                         </button>
@@ -204,7 +205,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <script type="text/javascript" src="/js/client.js"></script>
 <script>window.PRECO_CATEGORIA_CONFIG = @json($precoCategoriaJs ?? []);</script>
 <script type="text/javascript" src="/js/tabela_preco_venda.js?v=20260623"></script>
-<script type="text/javascript" src="/js/vendas.js?v=20260623"></script>
+<script type="text/javascript" src="/js/vendas.js?v=20261008"></script>
 <script type="text/javascript" src="/js/product.js"></script>
 <script type="text/javascript" src="/js/transportadora.js"></script>
 @if(session()->hasOldInput() && old('produto_id') && is_array(old('produto_id')))

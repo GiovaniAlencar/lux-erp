@@ -10,6 +10,9 @@
                     <div class="col-md-12">
                         {!! Form::text('razao_social', 'Nome')->required() !!}
                     </div>
+                    <div class="col-md-12">
+                        {!! Form::text('cpf_cnpj', 'CPF/CNPJ')->attrs(['class' => 'cpf_cnpj']) !!}
+                    </div>
                     <div class="col-md-6">
                         {!! Form::tel('celular', 'Celular')->attrs(['class' => 'fone']) !!}
                     </div>

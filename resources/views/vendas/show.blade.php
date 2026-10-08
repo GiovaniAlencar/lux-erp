@@ -78,6 +78,8 @@
         'entrega_confirmada_motoboy' => 'Entrega confirmada (motoboy)',
         'entrega_ocorrencia_motoboy' => 'Ocorrência na entrega (motoboy)',
         'caixa_fechada' => 'Caixa fechado (ADM)',
+        'nf_externa_emitida' => 'NF-e fiscal emitida',
+        'nf_externa_pendente' => 'NF-e fiscal pendente',
     ];
 @endphp
 
@@ -222,7 +224,7 @@
                                 @foreach ($item->itens as $p)
                                 <tr class="transition-colors hover:bg-gray-700/30">
                                     <td class="px-4 py-3.5 text-gray-400 font-mono">{{ $p->id }}</td>
-                                    <td class="px-4 py-3.5 text-gray-100">{{ $p->produto->nome }}</td>
+                                    <td class="px-4 py-3.5 text-gray-100">{{ $p->produto->nome }}@if($p->fiscal) <span class="ml-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-bold bg-indigo-600 text-white" title="Item fiscal: NF-e no outro sistema">F</span>@endif</td>
                                     <td class="px-4 py-3.5 text-right tabular-nums text-gray-200">{{ __moeda($p->quantidade) }}</td>
                                     <td class="px-4 py-3.5 text-right tabular-nums text-gray-300">{{ __moeda($p->valor) }}</td>
                                     <td class="px-4 py-3.5 text-right tabular-nums font-medium text-indigo-300">{{ __moeda($p->quantidade * $p->valor) }}</td>
@@ -393,6 +395,97 @@
                     <p class="mt-4 text-xs text-gray-500 leading-relaxed">O total exibido segue a regra anterior: valor total da venda + frete.</p>
                 </aside>
 
+                @php
+                    $divFiscal = $item->divisaoFiscal();
+                    $sitNf = $item->situacaoNfExterna($divFiscal);
+                @endphp
+                @if($divFiscal['tem_fiscal'] || $sitNf)
+                {{-- Divisão em duas contas (interno: vendedor e fechamento) --}}
+                <div id="nf-externa" class="rounded-xl border border-indigo-500/40 bg-gray-800 shadow-md p-5">
+                    <div class="flex items-center gap-2 mb-4">
+                        <i data-lucide="split" class="size-5 text-indigo-400"></i>
+                        <h2 class="text-base font-semibold text-gray-100">Cobrar em duas contas</h2>
+                    </div>
+                    <dl class="space-y-3 text-sm">
+                        <div class="flex justify-between gap-3 items-baseline">
+                            <dt class="text-gray-300"><span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-bold bg-indigo-600 text-white mr-1">F</span>{{ config('lux.conta_fiscal') }}</dt>
+                            <dd class="text-lg font-bold tabular-nums text-indigo-300 flex items-center gap-2">@include('vendas.partials.pix_btn', ['conta' => 'fiscal', 'valor' => $divFiscal['fiscal'], 'txid' => 'LUX' . $item->id . 'F']){{ __moeda($divFiscal['fiscal']) }}</dd>
+                        </div>
+                        <div class="flex justify-between gap-3 items-baseline border-b border-gray-700/80 pb-3">
+                            <dt class="text-gray-300"><span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-bold bg-gray-500 text-white mr-1">2</span>{{ config('lux.conta_nao_fiscal') }}</dt>
+                            <dd class="text-lg font-bold tabular-nums text-gray-100 flex items-center gap-2">@include('vendas.partials.pix_btn', ['conta' => 'nao_fiscal', 'valor' => $divFiscal['nao_fiscal'], 'txid' => 'LUX' . $item->id . 'N']){{ __moeda($divFiscal['nao_fiscal']) }}</dd>
+                        </div>
+                        <div class="flex justify-between gap-3 text-xs text-gray-500">
+                            <dt>Total</dt>
+                            <dd class="tabular-nums">{{ __moeda($divFiscal['total']) }}</dd>
+                        </div>
+                    </dl>
+
+                    <details class="mt-4">
+                        <summary class="cursor-pointer text-xs font-medium text-indigo-300">Itens para emitir a NF-e ({{ $item->itensFiscais()->count() }})</summary>
+                        <table class="w-full mt-2 text-xs text-gray-300">
+                            <thead class="text-gray-500">
+                                <tr><th class="text-left py-1">Produto</th><th class="text-right py-1">Qtd</th><th class="text-right py-1">Unit.</th><th class="text-right py-1">Subtotal</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach($item->itensFiscais() as $fi)
+                                <tr class="border-t border-gray-700/60">
+                                    <td class="py-1 pr-2">{{ $fi->produto->nome ?? ('#' . $fi->produto_id) }}</td>
+                                    <td class="py-1 text-right tabular-nums">{{ rtrim(rtrim(number_format((float) $fi->quantidade, 3, ',', '.'), '0'), ',') }}</td>
+                                    <td class="py-1 text-right tabular-nums">{{ __moeda($fi->valor) }}</td>
+                                    <td class="py-1 text-right tabular-nums">{{ __moeda($fi->subtotal()) }}</td>
+                                </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                        @if((float) $item->desconto > 0 || (float) $item->acrescimo > 0)
+                        <p class="mt-2 text-[11px] text-gray-500">Desconto/acréscimo rateados: valor fiscal já considera a parte proporcional. Itens: {{ __moeda($divFiscal['itens_fiscal']) }} → cobrar {{ __moeda($divFiscal['fiscal']) }}.</p>
+                        @endif
+                    </details>
+
+                    {{-- Controle da NF-e emitida no outro sistema --}}
+                    <div class="mt-4 border-t border-gray-700/80 pt-4">
+                        <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">NF-e fiscal (outro sistema)</p>
+                        @if($sitNf === 'emitida')
+                            <div class="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+                                <i data-lucide="circle-check" class="size-4 inline -mt-0.5"></i>
+                                Emitida{{ $item->nf_externa_numero ? ' · nº ' . $item->nf_externa_numero : '' }}
+                                <div class="text-[11px] text-emerald-300/70 mt-0.5">
+                                    {{ $item->nf_externa_em ? __data_pt($item->nf_externa_em, 1) : '' }}{{ optional($item->nfExternaUsuario)->nome ? ' · ' . $item->nfExternaUsuario->nome : '' }}
+                                </div>
+                            </div>
+                        @elseif($sitNf === 'divergente')
+                            <div class="rounded-lg border border-rose-500/50 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+                                <i data-lucide="triangle-alert" class="size-4 inline -mt-0.5"></i>
+                                Marcada como emitida{{ $item->nf_externa_numero ? ' (nº ' . $item->nf_externa_numero . ')' : '' }} com
+                                <strong>R$ {{ __moeda($item->nf_externa_valor) }}</strong>, mas o valor fiscal agora é
+                                <strong>R$ {{ __moeda($divFiscal['fiscal']) }}</strong>. Confira a nota.
+                            </div>
+                        @else
+                            <div class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                                <i data-lucide="clock" class="size-4 inline -mt-0.5"></i> Pendente
+                            </div>
+                        @endif
+
+                        <div class="mt-3 flex flex-col gap-2">
+                            @if($sitNf !== 'emitida' && $divFiscal['tem_fiscal'])
+                            <input type="text" id="lux-nf-numero" maxlength="30" placeholder="Nº da NF-e (opcional)"
+                                value="{{ $item->nf_externa_numero }}"
+                                class="w-full rounded-lg border border-gray-600 bg-gray-900 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-indigo-500 focus:outline-none">
+                            <button type="button" class="lux-nf-acao inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500" data-acao="emitida">
+                                <i data-lucide="file-check" class="size-4"></i> Marcar NF como emitida
+                            </button>
+                            @endif
+                            @if($sitNf === 'emitida' || $sitNf === 'divergente')
+                            <button type="button" class="lux-nf-acao inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-600 px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700" data-acao="pendente">
+                                <i data-lucide="undo-2" class="size-4"></i> Voltar para pendente
+                            </button>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+                @endif
+
                 {{-- 6. Ações --}}
                 <div class="rounded-xl border border-gray-700 bg-gray-800 shadow-md p-5">
                     <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Ações</p>
@@ -431,6 +524,33 @@
         }
         var btnReabrir = document.getElementById('lux-venda-reabrir-caixa');
         var csrfToken = '{{ csrf_token() }}';
+
+        document.querySelectorAll('.lux-nf-acao').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var numEl = document.getElementById('lux-nf-numero');
+                var body = new URLSearchParams();
+                body.append('acao', btn.getAttribute('data-acao'));
+                if (numEl) body.append('numero', numEl.value || '');
+                btn.disabled = true;
+                fetch("{{ route('vendas.nf-externa', $item->id) }}", {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                    body: body
+                }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+                .then(function (x) {
+                    if (!x.ok) {
+                        btn.disabled = false;
+                        swal("Erro", (x.j && x.j.message) || "Não foi possível salvar.", "error");
+                        return;
+                    }
+                    window.location.hash = 'nf-externa';
+                    window.location.reload();
+                }).catch(function () {
+                    btn.disabled = false;
+                    swal("Erro", "Falha de conexão.", "error");
+                });
+            });
+        });
         if (btnReabrir) {
             btnReabrir.addEventListener('click', function () {
                 var vid = btnReabrir.getAttribute('data-venda');

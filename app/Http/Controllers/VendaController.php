@@ -110,7 +110,7 @@ class VendaController extends Controller
         //     ->orderBy('created_at', 'desc')
         //     ->paginate(env("PAGINACAO"));
 
-        $data = Venda::where('empresa_id', $request->empresa_id)
+        $queryVendas = Venda::where('empresa_id', $request->empresa_id)
             ->when(!empty($start_date) && !empty($pesquisa_data), function ($query) use ($start_date, $pesquisa_data) {
                 return $query->whereDate($pesquisa_data, '>=', $start_date);
             })
@@ -132,6 +132,19 @@ class VendaController extends Controller
             ->when($filter_somente_abertos, function ($query) {
                 return $query->where('fechada_caixa', false);
             })
+            ->when($request->get('nf_externa') === 'pendente', function ($query) {
+                return $query->whereHas('itens', function ($q) {
+                    $q->where('fiscal', 1);
+                })->where(function ($q) {
+                    $q->whereNull('nf_externa_status')->orWhere('nf_externa_status', '!=', 'emitida');
+                })->where('estado_emissao', '!=', 'cancelado')
+                  ->where(function ($q) {
+                      $q->whereNull('status_pedido')->orWhere('status_pedido', '!=', 'cancelada');
+                  });
+            })
+            ->when($request->get('nf_externa') === 'emitida', function ($query) {
+                return $query->where('nf_externa_status', 'emitida');
+            })
             ->when($estado_emissao != "", function ($query) use ($estado_emissao) {
                 return $query->where('estado_emissao', $estado_emissao);
             })
@@ -141,9 +154,13 @@ class VendaController extends Controller
             ->when($filial_id != 'todos', function ($query) use ($filial_id) {
                 $filial_id = $filial_id == -1 ? null : $filial_id;
                 return $query->where('filial_id', $filial_id);
-            })
+            });
+
+        $data = (clone $queryVendas)
+            ->with('itens')
             ->orderBy('created_at', 'desc')
             ->paginate(env("PAGINACAO"));
+
 
 
         $config = ConfigNota::where('empresa_id', request()->empresa_id)
@@ -286,6 +303,7 @@ class VendaController extends Controller
         if ($request->type == 'venda') {
             try {
                 $result = DB::transaction(function () use ($request) {
+                    $this->garantirDocumentoClienteFiscal($request);
                     $this->sincronizarPrecosTabelaCategoria($request);
                     $valor_total = $this->somaItens($request);
                     $empresa = Empresa::findOrFail($request->empresa_id);
@@ -648,6 +666,7 @@ class VendaController extends Controller
         if ($request->type == 'venda') {
             try {
                 $result = DB::transaction(function () use ($request, $id) {
+                    $this->garantirDocumentoClienteFiscal($request);
                     $item = Venda::findOrFail($id);
                     $statusAntes = $item->status_pedido;
                     $item->load(['itens.produto']);
@@ -1456,6 +1475,16 @@ class VendaController extends Controller
             return redirect()->back();
         }
 
+        try {
+            $this->garantirDocumentoClienteFiscal(new Request([
+                'produto_id' => $venda->itens->pluck('produto_id')->all(),
+                'cliente_id' => $cliente_id,
+            ]));
+        } catch (\Exception $e) {
+            session()->flash("flash_erro", $e->getMessage() . ' Ajuste o cadastro do cliente e clone novamente.');
+            return redirect()->back();
+        }
+
         $freteId = null;
         if ($venda->frete_id != NULL) {
             $frete = Frete::create([
@@ -1723,6 +1752,98 @@ class VendaController extends Controller
         return response()->json([
             'ok' => true,
             'fechada_em_label' => $v->fechada_em ? __data_pt($v->fechada_em, 1) : null,
+        ]);
+    }
+
+    /**
+     * Venda com item fiscal exige CPF/CNPJ válido no cadastro do cliente.
+     * Se veio "cliente_cpf_cnpj" na tela da venda, grava no cadastro do cliente.
+     * Lança exceção (a venda volta para a tela com a mensagem) se faltar.
+     */
+    private function garantirDocumentoClienteFiscal(Request $request): void
+    {
+        $ids = array_filter(array_map('intval', (array) $request->produto_id));
+        if (empty($ids)) {
+            return;
+        }
+        $temFiscal = Produto::whereIn('id', $ids)->where('fiscal', 1)->exists();
+        if (!$temFiscal) {
+            return;
+        }
+
+        $cliente = Cliente::find($request->cliente_id);
+        if (!$cliente) {
+            throw new \Exception('Venda com produto fiscal: selecione o cliente e informe o CPF/CNPJ.');
+        }
+
+        $docTela = trim((string) $request->input('cliente_cpf_cnpj', ''));
+        if ($docTela !== '') {
+            if (!\App\Helpers\Documento::valido($docTela)) {
+                throw new \Exception('CPF/CNPJ informado é inválido: ' . $docTela);
+            }
+            $formatado = \App\Helpers\Documento::formatar($docTela);
+            if ($cliente->cpf_cnpj !== $formatado) {
+                $cliente->cpf_cnpj = $formatado;
+                $cliente->save();
+            }
+            return;
+        }
+
+        if (!\App\Helpers\Documento::valido($cliente->cpf_cnpj)) {
+            throw new \Exception('Venda com produto fiscal: o cliente "' . $cliente->razao_social . '" está sem CPF/CNPJ válido. Preencha o campo CPF/CNPJ abaixo do cliente.');
+        }
+    }
+
+    /**
+     * Marca / desmarca a NF-e da parte fiscal como emitida no outro sistema.
+     * POST acao=emitida (com numero opcional) | acao=pendente
+     */
+    public function nfExterna(Request $request, $id)
+    {
+        $v = Venda::with('itens')->findOrFail($id);
+        if (!__valida_objeto($v)) {
+            abort(403);
+        }
+
+        $acao = $request->input('acao');
+        if (!in_array($acao, ['emitida', 'pendente'], true)) {
+            return response()->json(['message' => 'Ação inválida.'], 422);
+        }
+
+        $div = $v->divisaoFiscal();
+        if ($acao === 'emitida' && !$div['tem_fiscal']) {
+            return response()->json(['message' => 'Esta venda não tem itens fiscais.'], 422);
+        }
+
+        if ($acao === 'emitida') {
+            $v->nf_externa_status = 'emitida';
+            $v->nf_externa_numero = mb_substr(trim((string) $request->input('numero', '')), 0, 30) ?: null;
+            $v->nf_externa_valor = $div['fiscal'];
+            $v->nf_externa_em = now();
+            $v->nf_externa_usuario_id = get_id_user();
+            $descricao = 'NF-e fiscal marcada como emitida'
+                . ($v->nf_externa_numero ? ' (nº ' . $v->nf_externa_numero . ')' : '')
+                . ' — R$ ' . number_format($div['fiscal'], 2, ',', '.');
+        } else {
+            $v->nf_externa_status = 'pendente';
+            $v->nf_externa_numero = null;
+            $v->nf_externa_valor = null;
+            $v->nf_externa_em = null;
+            $v->nf_externa_usuario_id = get_id_user();
+            $descricao = 'NF-e fiscal voltou para pendente';
+        }
+        $v->save();
+
+        $this->registrarAuditoriaVenda($v->id, 'nf_externa_' . $acao, $descricao, [
+            'numero' => $v->nf_externa_numero,
+            'valor_fiscal' => $div['fiscal'],
+        ]);
+
+        return response()->json([
+            'ok' => true,
+            'situacao' => $v->situacaoNfExterna($div),
+            'numero' => $v->nf_externa_numero,
+            'em' => $v->nf_externa_em ? __data_pt($v->nf_externa_em, 1) : null,
         ]);
     }
 

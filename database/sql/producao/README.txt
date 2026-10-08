@@ -13,6 +13,7 @@ Ordem sugerida:
 10) 10_alter_rotas_entrega_motoboy_pago.sql
 11) 15_create_promocoes.sql (módulo de promoções por produto)
 12) 16_alter_ecommerce_order_items_promocao_id.sql (rastreia promoção usada em cada item do site; requer 15 aplicado antes)
+13) 17_add_fiscal_produtos_item_vendas.sql (divisão fiscal / não fiscal da venda em duas contas)
 
 Deploy completo (SQL + lista de arquivos FTP): ver DEPLOY_JUN2026.txt
 

@@ -848,6 +848,7 @@ Route::middleware([
         Route::post('/workflow-marcar-entregue', 'VendaController@workflowMarcarEntregue')->name('vendas.workflow-marcar-entregue');
         Route::post('/fechar-caixa/{id}', 'VendaController@fecharCaixa')->name('vendas.fechar-caixa');
         Route::post('/reabrir-caixa/{id}', 'VendaController@reabrirCaixa')->name('vendas.reabrir-caixa');
+        Route::post('/nf-externa/{id}', 'VendaController@nfExterna')->name('vendas.nf-externa');
         Route::get('/xml-temp/{id}', 'VendaController@xmlTemp')->name('vendas.xml-temp');
         Route::get('/danfe-temp/{id?}', 'VendaController@danfeTemp')->name('vendas.danfe-temp');
         Route::get('/state-fiscal/{id}', 'NfeController@estadoFiscal')->name('vendas.state-fiscal');

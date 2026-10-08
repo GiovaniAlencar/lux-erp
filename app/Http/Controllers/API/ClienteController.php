@@ -70,6 +70,13 @@ class ClienteController extends Controller
             $cliente->razao_social = $request->razao_social ?? $cliente->razao_social;
             $cliente->celular = $request->celular ?? $cliente->celular;
             $cliente->email = $request->email ?? $cliente->email;
+            $doc = trim((string) $request->input('cpf_cnpj', ''));
+            if ($doc !== '') {
+                if (!\App\Helpers\Documento::valido($doc)) {
+                    return response()->json('CPF/CNPJ inválido.', 422);
+                }
+                $cliente->cpf_cnpj = \App\Helpers\Documento::formatar($doc);
+            }
             $cliente->save();
             return response()->json($cliente, 200);
         }catch(\Exception $e){

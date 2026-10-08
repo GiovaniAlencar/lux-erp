@@ -302,6 +302,14 @@
                         @endforeach
                     </select>
                 </div>
+                <div class="col-xl-2 col-lg-2 col-md-6">
+                    <label class="form-label small mb-0 @if($vendasUiDark) text-gray-400 @else text-gray-600 @endif">NF fiscal</label>
+                    <select name="nf_externa" class="form-select form-select-sm" title="Vendas com itens fiscais: NF-e emitida no outro sistema?">
+                        <option value="">Todas</option>
+                        <option value="pendente" {{ request('nf_externa') === 'pendente' ? 'selected' : '' }}>NF pendente</option>
+                        <option value="emitida" {{ request('nf_externa') === 'emitida' ? 'selected' : '' }}>NF emitida</option>
+                    </select>
+                </div>
                 @if(!empty($usuarioAdm))
                 <div class="col-xl-2 col-lg-2 col-md-6 lux-filter-caixa-wrap">
                     <label class="form-label small mb-0 lux-filter-caixa-label @if($vendasUiDark) text-gray-400 @else text-gray-600 @endif" for="filter_somente_abertos">
@@ -336,6 +344,7 @@
         <div class="shrink-0 flex flex-col gap-1 lg:flex-row lg:items-center lg:justify-between mb-2">
             <h2 class="text-sm font-semibold tracking-tight @if($vendasUiDark) text-gray-100 @else text-gray-900 @endif mb-0">Lista de vendas</h2>
         </div>
+
 
         @if(($qtdAlteracaoPendente ?? 0) > 0)
             <div class="shrink-0 mb-1 flex gap-1.5 rounded-lg border px-2 py-1 text-[11px] shadow-sm ring-1 @if($vendasUiDark) border-rose-500/35 bg-rose-500/10 text-rose-100 shadow-black/20 ring-rose-500/20 @else border-rose-200 bg-rose-50 text-rose-900 shadow-rose-900/5 ring-rose-100 @endif" role="alert">
@@ -452,6 +461,26 @@
                                         <span class="@if($vendasUiDark) text-gray-600 @else text-gray-400 @endif">·</span> Frete {{ __moeda($item->frete) }}
                                         <span class="@if($vendasUiDark) text-gray-600 @else text-gray-400 @endif">·</span> Acrésc. {{ __moeda($item->acrescimo) }}
                                     </div>
+                                    @php
+                                        $divFiscal = $item->divisaoFiscal();
+                                        $sitNf = $item->situacaoNfExterna($divFiscal);
+                                        $nfBadge = [
+                                            'pendente' => ['NF pendente', 'bg-amber-500 text-white'],
+                                            'emitida' => ['NF emitida' . ($item->nf_externa_numero ? ' nº ' . $item->nf_externa_numero : ''), 'bg-emerald-600 text-white'],
+                                            'divergente' => ['NF ≠ valor', 'bg-rose-600 text-white'],
+                                        ][$sitNf] ?? null;
+                                    @endphp
+                                    @if($divFiscal['tem_fiscal'] || $nfBadge)
+                                    <div class="text-xs leading-snug mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 tabular-nums" title="Cobrar em duas contas: {{ config('lux.conta_fiscal') }} / {{ config('lux.conta_nao_fiscal') }}">
+                                        <span class="font-semibold @if($vendasUiDark) text-indigo-300 @else text-indigo-700 @endif"><span class="inline-block rounded px-1 text-[10px] font-bold bg-indigo-600 text-white">F</span> R$ {{ __moeda($divFiscal['fiscal']) }} @include('vendas.partials.pix_btn', ['conta' => 'fiscal', 'valor' => $divFiscal['fiscal'], 'txid' => 'LUX' . $item->id . 'F'])</span>
+                                        <span class="font-semibold @if($vendasUiDark) text-gray-300 @else text-gray-700 @endif"><span class="inline-block rounded px-1 text-[10px] font-bold bg-gray-500 text-white">2</span> R$ {{ __moeda($divFiscal['nao_fiscal']) }} @include('vendas.partials.pix_btn', ['conta' => 'nao_fiscal', 'valor' => $divFiscal['nao_fiscal'], 'txid' => 'LUX' . $item->id . 'N'])</span>
+                                        @if($nfBadge)
+                                        <a href="{{ route('vendas.show', $item->id) }}#nf-externa" class="inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold no-underline {{ $nfBadge[1] }}" title="Controle da NF-e fiscal (abrir pedido)">{{ $nfBadge[0] }}</a>
+                                        @endif
+                                    </div>
+                                    @elseif($divFiscal['total'] > 0)
+                                    <div class="text-xs leading-snug mt-1">@include('vendas.partials.pix_btn', ['conta' => 'nao_fiscal', 'valor' => $divFiscal['total'], 'txid' => 'LUX' . $item->id . 'N'])</div>
+                                    @endif
                                 </td>
                                 <td class="px-2 py-2.5 align-middle">
                                     <div class="td-wf-status flex flex-wrap items-center gap-x-1.5 gap-y-1">
