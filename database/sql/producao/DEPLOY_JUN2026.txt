@@ -1,0 +1,74 @@
+================================================================================
+DEPLOY MANUAL — Jun/2026 (rotas de entrega + vendas)
+================================================================================
+
+1) BACKUP
+   - Banco de dados completo
+   - Pasta do sistema no servidor (FTP / painel)
+
+2) SQL NO BANCO (phpMyAdmin ou cliente MySQL)
+   Ordem:
+   a) Se produção NÃO tem fechada_caixa na tabela vendas:
+      → 09_alter_vendas_fechada_caixa.sql
+   b) 07_alter_vendas_versao_pedido.sql
+      (se der erro de coluna duplicada, pule o trecho que já existe;
+       se tiver fechada_caixa, use o ALTER comentado no final do arquivo 07)
+   c) 08_create_rotas_entrega.sql
+      (se tabelas já existirem, pule este arquivo)
+   d) 10_alter_rotas_entrega_motoboy_pago.sql
+      (controle pago ao motoboy — soma dos fretes da rota)
+
+   Pré-requisito: scripts 01–06 já aplicados (status_pedido, venda_auditorias, etc.)
+
+3) ENVIAR ARQUIVOS (manter pastas — raiz do projeto no servidor)
+
+   NOVOS:
+   app/Http/Controllers/RotaEntregaController.php
+   app/Http/Controllers/EntregaConfirmacaoController.php
+   app/Helpers/RotaEntregaHelper.php
+   app/Models/RotaEntrega.php
+   app/Models/RotaEntregaItem.php
+   resources/views/rotas_entrega/index.blade.php
+   resources/views/rotas_entrega/show.blade.php
+   resources/views/rotas_entrega/confirmar.blade.php
+
+   SUBSTITUIR (upload por cima):
+   app/Http/Controllers/VendaController.php
+   app/Helpers/Menu.php
+   app/Models/Venda.php
+   routes/web.php
+   resources/views/vendas/index.blade.php
+   resources/views/vendas/_forms.blade.php
+   resources/views/vendas/create.blade.php
+   resources/views/vendas/show.blade.php
+   resources/views/vendas/print.blade.php
+   resources/views/vendas/print_ficha_separacao.blade.php
+
+   OPCIONAL (se alterou localmente):
+   resources/views/login/login2.blade.php
+
+   MIGRATIONS (opcional, só registro — não obrigatório se usa SQL manual):
+   database/migrations/2026_06_09_120000_add_versao_pedido_to_vendas_table.php
+   database/migrations/2026_06_09_140000_create_rotas_entrega_tables.php
+   database/migrations/2026_06_09_150000_add_motoboy_nome_to_rotas_entrega_table.php
+   database/migrations/2026_06_09_160000_add_pagamento_fields_to_rota_entrega_itens.php
+   database/migrations/2026_06_10_100000_add_motoboy_pago_to_rotas_entrega_table.php
+
+4) NO SERVIDOR (SSH ou terminal do painel), na pasta do projeto:
+
+   php artisan cache:clear
+   php artisan config:clear
+   php artisan view:clear
+   php artisan route:clear
+
+   (Se não tiver SSH, apague manualmente o conteúdo de bootstrap/cache/*.php
+    exceto .gitignore, e storage/framework/views/*)
+
+5) TESTAR
+   - Login
+   - Vendas → lista (filtro caixa ADM, PDF, ficha)
+   - Vendas → selecionar pedidos → Gerar rota
+   - Rotas de entrega → salvar → baixar TXT
+   - Link público /entrega/{token}
+
+================================================================================

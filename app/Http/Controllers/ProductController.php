@@ -53,75 +53,94 @@ class ProductController extends Controller
 
     public function index(Request $request)
     {
-        $permissaoAcesso = __getLocaisUsarioLogado();
-        $estoque = $request->estoque;
         $filial_id = $request->filial_id;
-        $nome = $request->nome;
-        $tipo = $request->tipo;
         $local_padrao = __get_local_padrao();
         if (!$filial_id && $local_padrao) {
             $filial_id = $local_padrao;
         }
-
         if (!$filial_id) {
             $filial_id = 'todos';
         }
+
+        $tipo = $request->get('tipo', 'nome');
+        $nome = trim((string) $request->get('nome', ''));
+        $status = $request->get('status', 'ativos');
+        $estoqueFaixa = $request->get('estoque_faixa', '');
+        $semVendasDias = $request->get('sem_vendas_dias');
+        $ultimaSaidaDe = $request->get('ultima_saida_de');
+        $ultimaSaidaAte = $request->get('ultima_saida_ate');
+
         $categorias = Categoria::where('empresa_id', $request->empresa_id)->get();
         $marcas = Marca::where('empresa_id', $request->empresa_id)->get();
-        $data = Produto::where('produtos.empresa_id', request()->empresa_id)
-        ->when(!empty($nome), function ($query) use ($nome, $tipo) {
-            return $query->where($tipo, 'LIKE', "%$nome%");
-        })
-        ->when(!empty($request->categoria_id), function ($q) use ($request) {
-            return  $q->where(function ($quer) use ($request) {
-                return $quer->where('categoria_id', 'LIKE', "%$request->categoria_id%");
-            });
-        })
-        ->when(!empty($request->marca_id), function ($q) use ($request) {
-            return  $q->where(function ($quer) use ($request) {
-                return $quer->where('marca_id', 'LIKE', "%$request->marca_id%");
-            });
-        })
-        ->paginate(env("PAGINACAO"));
 
-        $isPaginate = 0;
+        $ultimaCompraSql = '(SELECT MAX(c.created_at) FROM item_compras ic INNER JOIN compras c ON c.id = ic.compra_id WHERE ic.produto_id = produtos.id)';
+        $ultimaSaidaSql = '(SELECT MAX(dt) FROM (
+            SELECT COALESCE(v.data_registro, v.created_at) AS dt FROM item_vendas iv INNER JOIN vendas v ON v.id = iv.venda_id WHERE iv.produto_id = produtos.id
+            UNION ALL
+            SELECT vc.created_at AS dt FROM item_venda_caixas ivc INNER JOIN venda_caixas vc ON vc.id = ivc.venda_caixa_id WHERE ivc.produto_id = produtos.id
+        ) AS saidas)';
 
-        if ($estoque != 0) {
-            $temp = [];
-            foreach ($data as $p) {
-                if ($estoque == 1) {
-                    if ($p->estoque && $p->estoque->quantidade > 0) {
-                        array_push($temp, $p);
-                    }
-                } else {
-                    if (!$p->estoque || $p->estoque->quantidade < 0) {
-                        array_push($temp, $p);
-                    }
+        $estoqueSumSql = $filial_id !== 'todos'
+            ? '(SELECT COALESCE(SUM(e.quantidade), 0) FROM estoques e WHERE e.produto_id = produtos.id AND (e.filial_id = ' . (int) $filial_id . ' OR e.filial_id IS NULL))'
+            : '(SELECT COALESCE(SUM(e.quantidade), 0) FROM estoques e WHERE e.produto_id = produtos.id)';
+
+        $perPage = max(10, min(100, (int) ($request->get('per_page') ?: 50)));
+
+        $query = Produto::query()
+            ->where('produtos.empresa_id', $request->empresa_id)
+            ->select('produtos.*')
+            ->selectRaw("$ultimaCompraSql as ultima_compra_at")
+            ->selectRaw("$ultimaSaidaSql as ultima_saida_at")
+            ->when($status === 'ativos', fn ($q) => $q->where('produtos.inativo', 0))
+            ->when($status === 'inativos', fn ($q) => $q->where('produtos.inativo', 1))
+            ->when(!empty($nome), function ($q) use ($nome, $tipo) {
+                if ($tipo === 'id') {
+                    return is_numeric($nome)
+                        ? $q->where('produtos.id', (int) $nome)
+                        : $q->whereRaw('1 = 0');
                 }
-            }
-            $data = $temp;
-            $isPaginate = 1;
-        }
-        $produtos = [];
-        if ($filial_id != 'todos') {
-
-            foreach ($data as $p) {
-                $l = json_decode($p->locais);
-                if (is_array($l)) {
-                    if (in_array($filial_id, $l)) {
-                        array_push($produtos, $p);
-                    }
+                if ($tipo === 'codBarras') {
+                    return $q->where('produtos.codBarras', 'LIKE', "%{$nome}%");
                 }
-            }
-            $data = $produtos;
-            $isPaginate = 1;
-        }
 
-        if ($isPaginate) {
-            $data = $this->paginate($data);
-        }
+                return $q->where('produtos.nome', 'LIKE', "%{$nome}%");
+            })
+            ->when(!empty($request->categoria_id), fn ($q) => $q->where('produtos.categoria_id', $request->categoria_id))
+            ->when(!empty($request->marca_id), fn ($q) => $q->where('produtos.marca_id', $request->marca_id))
+            ->when($filial_id !== 'todos', function ($q) use ($filial_id) {
+                $fid = (int) $filial_id;
+                $q->where(function ($w) use ($fid) {
+                    $w->whereRaw('JSON_CONTAINS(produtos.locais, ?)', [json_encode($fid)])
+                        ->orWhereRaw('JSON_CONTAINS(produtos.locais, ?)', ['-1']);
+                });
+            })
+            ->when($estoqueFaixa === 'zerado', fn ($q) => $q->whereRaw("$estoqueSumSql = 0"))
+            ->when($estoqueFaixa === 'negativo', fn ($q) => $q->whereRaw("$estoqueSumSql < 0"))
+            ->when($estoqueFaixa === '0_10', fn ($q) => $q->whereRaw("$estoqueSumSql >= 0 AND $estoqueSumSql <= 10"))
+            ->when($estoqueFaixa === '11_50', fn ($q) => $q->whereRaw("$estoqueSumSql >= 11 AND $estoqueSumSql <= 50"))
+            ->when($estoqueFaixa === '51_100', fn ($q) => $q->whereRaw("$estoqueSumSql >= 51 AND $estoqueSumSql <= 100"))
+            ->when($estoqueFaixa === '100_mais', fn ($q) => $q->whereRaw("$estoqueSumSql > 100"))
+            ->when(filled($semVendasDias) && (int) $semVendasDias > 0, function ($q) use ($semVendasDias, $ultimaSaidaSql) {
+                $limite = now()->subDays((int) $semVendasDias)->format('Y-m-d H:i:s');
+                $q->whereRaw("COALESCE($ultimaSaidaSql, '1970-01-01 00:00:00') < ?", [$limite]);
+            })
+            ->when(filled($ultimaSaidaDe), fn ($q) => $q->whereRaw("DATE($ultimaSaidaSql) >= ?", [$ultimaSaidaDe]))
+            ->when(filled($ultimaSaidaAte), fn ($q) => $q->whereRaw("DATE($ultimaSaidaSql) <= ?", [$ultimaSaidaAte]))
+            ->with('categoria:id,nome')
+            ->orderByDesc('produtos.id');
 
-        return view('produtos.index', compact('data', 'categorias', 'marcas', 'filial_id'));
+        $data = $query->paginate($perPage)->withQueryString();
+
+        $filtrosAvancadosAtivos = filled($semVendasDias) || filled($ultimaSaidaDe) || filled($ultimaSaidaAte);
+
+        return view('produtos.index', compact(
+            'data',
+            'categorias',
+            'marcas',
+            'filial_id',
+            'filtrosAvancadosAtivos',
+            'perPage'
+        ));
     }
 
     public function paginate($items, $perPage = 30, $page = null, $options = [])
@@ -265,8 +284,11 @@ class ProductController extends Controller
                     $file_name = $this->util->uploadImage($request, '/products');
                 }
                 $request->merge([
-                    'valor_compra' =>  __convert_value_bd($request->valor_compra),
-                    'valor_venda' => __convert_value_bd($request->valor_venda),
+                    'valor_compra' => round((float) __convert_value_bd($request->valor_compra), 2),
+                    'valor_venda' => round((float) __convert_value_bd($request->valor_venda), 2),
+                    'preco_2' => ($request->preco_2 ?? '') !== '' ? round((float) __convert_value_bd($request->preco_2), 2) : null,
+                    'preco_3' => ($request->preco_3 ?? '') !== '' ? round((float) __convert_value_bd($request->preco_3), 2) : null,
+                    'reajuste_automatico' => 1,
                     'referencia' => $request->referencia ?? '',
                     'estoque_inicial' => $request->estoque_inicial ?? 0,
                     'estoque_minimo' => $request->estoque_minimo ?? 0,
@@ -335,7 +357,7 @@ class ProductController extends Controller
                     $this->salvarProdutoNoDelivery($request, $prod, $file_name);
                 }
 
-                if ($request->ecommerce) {
+                if ($request->boolean('ecommerce')) {
                     $this->salvarProdutoEcommerce($request, $prod, $file_name);
                 }
 
@@ -370,8 +392,6 @@ class ProductController extends Controller
             // 'NCM' => 'required',
             'categoria_id' => 'required',
             'percentual_lucro' => 'required',
-            'unidade_compra' => 'required',
-            'unidade_venda' => 'required',
             // 'CFOP_saida_estadual' => 'required',
             // 'CFOP_saida_inter_estadual' => 'required',
             // 'CFOP_entrada_inter_estadual' => 'required',
@@ -384,8 +404,6 @@ class ProductController extends Controller
             'valor_compra.required' => 'Campo Obrigatório',
             'categoria_id.required' => 'Campo Obrigatório',
             'percentual_lucro.required' => 'Campo Obrigatório',
-            'unidade_compra.required' => 'Campo Obrigatório',
-            'unidade_venda.required' => 'Campo Obrigatório',
             // 'CFOP_saida_estadual.required' => 'Campo Obrigatório',
             // 'CFOP_saida_inter_estadual.required' => 'Campo Obrigatório',
             // 'CFOP_entrada_inter_estadual.required' => 'Campo Obrigatório',
@@ -413,8 +431,11 @@ class ProductController extends Controller
             }
 
             $request->merge([
-                'valor_venda' => __convert_value_bd($request->valor_venda),
-                'valor_compra' =>  __convert_value_bd($request->valor_compra),
+                'valor_venda' => round((float) __convert_value_bd($request->valor_venda), 2),
+                'preco_2' => ($request->preco_2 ?? '') !== '' ? round((float) __convert_value_bd($request->preco_2), 2) : null,
+                'preco_3' => ($request->preco_3 ?? '') !== '' ? round((float) __convert_value_bd($request->preco_3), 2) : null,
+                'valor_compra' => round((float) __convert_value_bd($request->valor_compra), 2),
+                'reajuste_automatico' => 1,
                 'referencia' => $request->referencia ?? '',
                 'estoque_inicial' => $request->estoque_inicial ?? 0,
                 'estoque_minimo' => $request->estoque_minimo ?? 0,
@@ -477,7 +498,7 @@ class ProductController extends Controller
                 $this->salvarProdutoNoDelivery($request, $item, $file_name);
             }
 
-            if ($request->ecommerce) {
+            if ($request->boolean('ecommerce')) {
                 $this->salvarProdutoEcommerce($request, $item, $file_name);
             }
 
@@ -1026,17 +1047,29 @@ class ProductController extends Controller
 
     private function salvarProdutoEcommerce($request, $produto, $file_name)
     {
-        $categoriaFirst = CategoriaProdutoEcommerce::where('empresa_id', $request->empresa_id)
-        ->first();
+        $categoriaId = (int) ($request->ecommerce_categoria_id ?? 0);
+        if ($categoriaId <= 0 && $produto->ecommerce) {
+            $categoriaId = (int) $produto->ecommerce->categoria_id;
+        }
+        if ($categoriaId <= 0) {
+            $categoriaFirst = CategoriaProdutoEcommerce::where('empresa_id', $request->empresa_id)->first();
+            $categoriaId = $categoriaFirst ? (int) $categoriaFirst->id : 0;
+        }
+        if ($categoriaId <= 0) {
+            return;
+        }
+
         $produtoEcommerce = [
             'produto_id' => $produto->id,
-            'categoria_id' => $request->ecommerce_categoria_id,
+            'categoria_id' => $categoriaId,
             'empresa_id' => $request->empresa_id,
-            'descricao' => $request->descricao_ecommerce ?? '',
-            'controlar_estoque' => $request->ecommerce_controlar_estoque,
-            'destaque' => $request->ecommerce_destaque,
-            'status' => $request->ecommerce_ativo,
-            'valor' => $request->valor_ecommerce ? __convert_value_bd($request->valor_ecommerce) : __convert_value_bd($request->valor_venda),
+            'descricao' => $request->descricao_ecommerce ?? ($produto->ecommerce?->descricao ?? ''),
+            'controlar_estoque' => $request->ecommerce_controlar_estoque ?? ($produto->ecommerce?->controlar_estoque ?? 0),
+            'destaque' => $request->ecommerce_destaque ?? ($produto->ecommerce?->destaque ?? 0),
+            'status' => $request->ecommerce_ativo ?? ($produto->ecommerce?->status ?? 1),
+            'valor' => $request->valor_ecommerce
+                ? __convert_value_bd($request->valor_ecommerce)
+                : __convert_value_bd($request->valor_venda),
         ];
         if ($produto->ecommerce) {
             $result = $produto->ecommerce;

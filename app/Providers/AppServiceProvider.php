@@ -87,6 +87,7 @@ class AppServiceProvider extends ServiceProvider
                 }
 
                 $rotaAtiva = $this->rotaAtiva();
+                $avisosVendedor = $this->avisosVendedor($user);
 
                 $view->with('casasDecimais', $casasDecimais);
                 $view->with('user', $user);
@@ -96,8 +97,72 @@ class AppServiceProvider extends ServiceProvider
                 $view->with('rotaAtiva', $rotaAtiva);
                 $view->with('video_url', $video_url);
                 $view->with('audio', $user->aviso_sonoro);
+                $view->with('avisosVendedor', $avisosVendedor);
             }
         });
+    }
+
+    private function avisosVendedor($user): array
+    {
+        $avisos = [
+            'total' => 0,
+            'itens' => [],
+        ];
+
+        try {
+            $empresaId = session('user_logged')['empresa'] ?? null;
+            if (!$empresaId) {
+                return $avisos;
+            }
+
+            $sitePendentes = \App\Models\EcommerceOrder::where('status', 'aguardando_confirmacao')->count();
+            if ($sitePendentes > 0) {
+                $avisos['itens'][] = [
+                    'titulo' => $sitePendentes . ' pedido(s) do site aguardando confirmação',
+                    'url' => route('ecommerce-vendas.index', ['status' => 'aguardando_confirmacao']),
+                    'tipo' => 'warning',
+                ];
+                $avisos['total'] += $sitePendentes;
+            }
+
+            $usuariosPendentes = \App\Models\EcommerceUser::where('status', 'pending')->count();
+            if ($usuariosPendentes > 0) {
+                $avisos['itens'][] = [
+                    'titulo' => $usuariosPendentes . ' usuário(s) do site pendente(s)',
+                    'url' => route('ecommerce-usuarios.index', ['status' => 'pending']),
+                    'tipo' => 'info',
+                ];
+                $avisos['total'] += $usuariosPendentes;
+            }
+
+            $freteCombinar = \App\Models\EcommerceOrder::where('status', 'aguardando_confirmacao')
+                ->where('shipping_status', 'to_combine')
+                ->count();
+            if ($freteCombinar > 0) {
+                $avisos['itens'][] = [
+                    'titulo' => $freteCombinar . ' pedido(s) com frete a combinar',
+                    'url' => route('ecommerce-vendas.index', ['status' => 'aguardando_confirmacao']),
+                    'tipo' => 'warning',
+                ];
+            }
+
+            $vendasAguardando = \App\Models\Venda::where('empresa_id', $empresaId)
+                ->whereIn('status_pedido', ['aguardando_confirmacao', 'em_elaboracao'])
+                ->where('estado_emissao', '!=', 'cancelado')
+                ->count();
+            if ($vendasAguardando > 0) {
+                $avisos['itens'][] = [
+                    'titulo' => $vendasAguardando . ' venda(s) ERP aguardando confirmação',
+                    'url' => route('vendas.index'),
+                    'tipo' => 'warning',
+                ];
+                $avisos['total'] += $vendasAguardando;
+            }
+        } catch (\Throwable $e) {
+            // silencioso: ambientes sem tabelas ecommerce
+        }
+
+        return $avisos;
     }
 
     private function getVideoUrl(){

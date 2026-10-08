@@ -4,6 +4,7 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\Cliente;
+use App\Models\EcommerceShippingNeighborhood;
 use Illuminate\Http\Request;
 
 class ClienteController extends Controller
@@ -74,6 +75,38 @@ class ClienteController extends Controller
         }catch(\Exception $e){
             return response()->json($e->getMessage(), 400);
         }
+    }
+
+    /**
+     * Consulta o valor de frete cadastrado para um bairro (mesma tabela usada pelo site).
+     * Usado para sugerir automaticamente o frete ao criar uma venda pelo ERP.
+     */
+    public function freteBairro(Request $request){
+        $bairro = trim((string) $request->query('bairro', ''));
+
+        if ($bairro === '') {
+            return response()->json(['encontrado' => false], 200);
+        }
+
+        $item = EcommerceShippingNeighborhood::where('active', true)
+            ->whereRaw('LOWER(neighborhood) = ?', [mb_strtolower($bairro)])
+            ->first();
+
+        if (!$item) {
+            $item = EcommerceShippingNeighborhood::where('active', true)
+                ->where('neighborhood', 'LIKE', "%{$bairro}%")
+                ->first();
+        }
+
+        if (!$item) {
+            return response()->json(['encontrado' => false], 200);
+        }
+
+        return response()->json([
+            'encontrado' => true,
+            'bairro' => $item->neighborhood,
+            'valor' => $item->shipping_price,
+        ], 200);
     }
 }
 

@@ -141,8 +141,17 @@ $(function () {
                 $.get(path_url + "api/produtos/find/" + product_id)
                 .done((e) => {
                     $('#inp-quantidade').val('1,00')
-                    $('#inp-valor_unitario').val(convertFloatToMoeda(e.valor_venda))
-                    $('#inp-subtotal').val(convertFloatToMoeda(e.valor_venda))
+                    if (window.TabelaPrecoVenda) {
+                        if (typeof TabelaPrecoVenda.setUltimoProduto === 'function') {
+                            TabelaPrecoVenda.setUltimoProduto(e)
+                        }
+                        if (typeof TabelaPrecoVenda.previewPrecoEntrada === 'function') {
+                            TabelaPrecoVenda.previewPrecoEntrada(e, '1,00')
+                        }
+                    } else {
+                        $('#inp-valor_unitario').val(convertFloatToMoeda(e.valor_venda))
+                        $('#inp-subtotal').val(convertFloatToMoeda(e.valor_venda))
+                    }
                 })
                 .fail((e) => {
                     console.log(e)
@@ -162,8 +171,35 @@ $(function () {
 
     $('#inp-cliente_id').change(() => {
         validateButtonSave()
+        sugerirFreteDoBairroCliente()
     })
 })
+
+// Sugere automaticamente o frete com base no bairro do cliente selecionado,
+// usando a mesma tabela de frete por bairro aplicada no site.
+function sugerirFreteDoBairroCliente() {
+    const clienteId = $('#inp-cliente_id').val();
+    if (!clienteId) return;
+
+    $.get(path_url + 'api/cliente/find/' + clienteId)
+        .done((cliente) => {
+            const bairro = cliente && cliente.bairro ? String(cliente.bairro).trim() : '';
+            if (!bairro) return;
+
+            $.get(path_url + 'api/cliente/frete-bairro', { bairro: bairro })
+                .done((res) => {
+                    if (!res || !res.encontrado) return;
+
+                    const $frete = $('#inp-frete');
+                    const valorAtual = convertMoedaToFloat($frete.val());
+                    if (valorAtual) return; // não sobrescreve frete já preenchido/editado manualmente
+
+                    $frete.val(convertFloatToMoeda(res.valor)).trigger('input').trigger('blur');
+                })
+                .fail(() => {});
+        })
+        .fail(() => {});
+}
 
 // Editar endereço do cliente (modal)
 $(document).on('click', '#btn-open-edit-endereco', function(){
@@ -365,13 +401,15 @@ function salvarItem(){
     $('.tr_'+this.rand).find('.subtotal-item').val(convertFloatToMoeda(qtd*valor_unitario))
 
     $('#modal-edit_item').modal('hide')
-    // atualiza totais e estados dependentes
-    if (typeof calcTotal === 'function') { 
-        calcTotal(); 
-        // atualiza sugestão de forma de pagamento/parcelas baseada no total
-        if (typeof formasPagamento === 'function') {
-            setTimeout(() => { formasPagamento(); }, 120);
-        }
+    $(document).trigger('venda:itens-alterados');
+    if (window.TabelaPrecoVenda && typeof TabelaPrecoVenda.aplicar === 'function') {
+        TabelaPrecoVenda.aplicar();
+        setTimeout(function () { TabelaPrecoVenda.aplicar(); }, 150);
+    } else if (typeof calcTotal === 'function') {
+        calcTotal();
+    }
+    if (typeof formasPagamento === 'function') {
+        setTimeout(function () { formasPagamento(); }, 120);
     }
     // dispara eventos nativos para atualizar resumos (create e edit)
     try {
@@ -406,10 +444,16 @@ $('.btn-add-item').click(() => {
             if (e.includes("alert(")) {
                 // eval(e); // alerta e para
             } else {
+                $('.table-itens tbody .empty-state').remove();
                 $('.table-itens tbody').append(e);
-                calcTotal();
+                $(document).trigger('venda:itens-alterados');
+                if (window.TabelaPrecoVenda && typeof TabelaPrecoVenda.aplicar === 'function') {
+                    setTimeout(function () { TabelaPrecoVenda.aplicar(); }, 0);
+                    setTimeout(function () { TabelaPrecoVenda.aplicar(); }, 150);
+                } else if (typeof calcTotal === 'function') {
+                    calcTotal();
+                }
 
-                // só limpa os campos se adicionou produto
                 $("#inp-produto_id").val('').change()
                 $("#inp-valor_unitario").val('')
                 $("#inp-quantidade").val('')
@@ -435,6 +479,21 @@ $(function () {
         }, 200)
 
     })
+})
+
+// Sublinhado leve no campo de frete: verde quando preenchido, amarelo (aviso,
+// não obrigatório) quando ainda está vazio. Só um lembrete visual discreto.
+function atualizaEstiloFrete() {
+    const $frete = $('#inp-frete');
+    if (!$frete.length) return;
+    const $grupo = $frete.closest('.frete-group');
+    const preenchido = convertMoedaToFloat($frete.val()) > 0;
+    $grupo.toggleClass('frete-preenchido', preenchido);
+    $grupo.toggleClass('frete-vazio-aviso', !preenchido);
+}
+$(function () {
+    atualizaEstiloFrete();
+    $('body').on('input blur', '#inp-frete', atualizaEstiloFrete);
 })
 
 // ===== Taxas da maquineta (cálculo e aplicação) =====
@@ -595,7 +654,13 @@ function calcTotal() {
 $(".table-itens").on('click', '.btn-delete-row', function () {
     $(this).closest('tr').remove();
     swal("Sucesso", "Produto removido!", "success")
-    calcTotal()
+    $(document).trigger('venda:itens-alterados');
+    if (window.TabelaPrecoVenda && typeof TabelaPrecoVenda.aplicar === 'function') {
+        TabelaPrecoVenda.aplicar();
+        setTimeout(function () { TabelaPrecoVenda.aplicar(); }, 150);
+    } else if (typeof calcTotal === 'function') {
+        calcTotal();
+    }
 });
 
 function formasPagamento() {

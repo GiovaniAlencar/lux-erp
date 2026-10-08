@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Helpers\StockMove;
+use App\Helpers\PrecoCategoriaVenda;
 use App\Models\AlteracaoEstoque;
 use App\Models\Estoque;
 use App\Models\Acessor;
@@ -29,6 +30,7 @@ use App\Models\NaturezaOperacao;
 use App\Models\Orcamento;
 use App\Models\Venda;
 use App\Models\VendaAuditoria;
+use App\Models\RotaEntregaItem;
 use App\Models\Usuario;
 use App\Models\Pais;
 use App\Models\Produto;
@@ -79,6 +81,8 @@ class VendaController extends Controller
             static fn ($v) => $v !== null && $v !== ''
         )));
         $filter_status_pagamento = $request->get('filter_status_pagamento');
+        $usuarioAdm = (bool) optional(Usuario::find(get_id_user()))->adm;
+        $filter_somente_abertos = $usuarioAdm && $request->boolean('filter_somente_abertos');
         $local_padrao = __get_local_padrao();
         if (!$filial_id && $local_padrao) {
             $filial_id = $local_padrao;
@@ -125,6 +129,9 @@ class VendaController extends Controller
             ->when(!empty($filter_status_pagamento), function ($query) use ($filter_status_pagamento) {
                 return $query->where('status_pagamento', $filter_status_pagamento);
             })
+            ->when($filter_somente_abertos, function ($query) {
+                return $query->where('fechada_caixa', false);
+            })
             ->when($estado_emissao != "", function ($query) use ($estado_emissao) {
                 return $query->where('estado_emissao', $estado_emissao);
             })
@@ -152,6 +159,7 @@ class VendaController extends Controller
             'separado' => 'Separado',
             'alteracao_pendente' => 'Alteração pendente',
             'em_rota_entrega' => 'Em rota de entrega',
+            'ocorrencia_entrega' => 'Ocorrência na entrega',
             'entregue' => 'Entregue',
             'cancelada' => 'Cancelada',
         ];
@@ -161,8 +169,6 @@ class VendaController extends Controller
             'parcial' => 'Parcial',
             'estornado' => 'Estornado',
         ];
-        $usuarioAdm = (bool) optional(Usuario::find(get_id_user()))->adm;
-
         $usuariosFiltroVenda = Usuario::where('empresa_id', $request->empresa_id)
             ->where('ativo', 1)
             ->orderBy('nome')
@@ -171,6 +177,21 @@ class VendaController extends Controller
         $qtdAlteracaoPendente = Venda::where('empresa_id', $request->empresa_id)
             ->where('status_pedido', 'alteracao_pendente')
             ->count();
+
+        $vendaIdsPagina = $data->getCollection()->pluck('id')->all();
+        $rotaPorVenda = collect();
+        if (!empty($vendaIdsPagina)) {
+            $rotaPorVenda = RotaEntregaItem::with('rota')
+                ->whereIn('venda_id', $vendaIdsPagina)
+                ->whereHas('rota', function ($q) use ($request) {
+                    $q->where('empresa_id', $request->empresa_id)
+                        ->whereIn('status', ['rascunho', 'em_rota', 'finalizada']);
+                })
+                ->orderByDesc('id')
+                ->get()
+                ->unique('venda_id')
+                ->keyBy('venda_id');
+        }
 
         return view('vendas.index', compact(
             'data',
@@ -182,7 +203,9 @@ class VendaController extends Controller
             'usuarioAdm',
             'usuariosFiltroVenda',
             'filter_status_pedido_selecionados',
-            'qtdAlteracaoPendente'
+            'filter_somente_abertos',
+            'qtdAlteracaoPendente',
+            'rotaPorVenda'
         ));
     }
 
@@ -233,6 +256,7 @@ class VendaController extends Controller
         $config = ConfigNota::where('empresa_id', $request->empresa_id)->first();
         $cidades = Cidade::all();
         $transportadoras = Transportadora::where('empresa_id', $request->empresa_id)->get();
+        $precoCategoriaJs = PrecoCategoriaVenda::configParaFrontend($categorias);
         return view('vendas.create', compact(
             'formaPagamento',
             'paises',
@@ -251,7 +275,8 @@ class VendaController extends Controller
             'config',
             'subDivisoes',
             'divisoes',
-            'transportadoras'
+            'transportadoras',
+            'precoCategoriaJs'
         ));
     }
 
@@ -261,6 +286,7 @@ class VendaController extends Controller
         if ($request->type == 'venda') {
             try {
                 $result = DB::transaction(function () use ($request) {
+                    $this->sincronizarPrecosTabelaCategoria($request);
                     $valor_total = $this->somaItens($request);
                     $empresa = Empresa::findOrFail($request->empresa_id);
                     $natureza = NaturezaOperacao::findOrFail($request->natureza_id);
@@ -284,6 +310,9 @@ class VendaController extends Controller
                         'usuario_id' => get_id_user(),
                         'frete_id' => $frete_id,
                         'observacao' => $request->observacao ?? '',
+                        'aviso_entrega' => $request->aviso_entrega ?? null,
+                        'modo_preco_arabes' => $request->input('modo_preco_arabes', 'auto'),
+                        'modo_preco_miniaturas' => $request->input('modo_preco_miniaturas', 'auto'),
                         'qtd_volumes' => $request->qtd_volumes ?? 0,
                         'peso_liquido' => $request->peso_liquido ?? 0,
                         'peso_bruto' => $request->peso_bruto ?? 0,
@@ -299,6 +328,8 @@ class VendaController extends Controller
                         'filial_id' => $request->filial_id != -1 ? $request->filial_id : null,
                         'status_pedido' => 'aguardando_confirmacao',
                         'status_pagamento' => 'pendente',
+                        'origem' => $request->origem ?: 'erp',
+                        'pedido_ecommerce_id' => $request->pedido_ecommerce_id ?: 0,
                     ]);
 
                     $venda = Venda::create($request->all());
@@ -483,9 +514,46 @@ class VendaController extends Controller
         return $valor_total;
     }
 
+    /**
+     * Recalcula valor_unitario[] e subtotal_item[] conforme tabela de preço por categoria.
+     */
+    private function sincronizarPrecosTabelaCategoria(Request $request): void
+    {
+        if (!is_array($request->produto_id) || count($request->produto_id) === 0) {
+            return;
+        }
+
+        $categorias = Categoria::where('empresa_id', $request->empresa_id)->get();
+        $modos = [
+            PrecoCategoriaVenda::GRUPO_ARABES => $request->input('modo_preco_arabes', PrecoCategoriaVenda::MODO_AUTO),
+            PrecoCategoriaVenda::GRUPO_MINIATURAS => $request->input('modo_preco_miniaturas', PrecoCategoriaVenda::MODO_AUTO),
+        ];
+
+        $valores = PrecoCategoriaVenda::calcularValoresUnitarios(
+            $request->produto_id,
+            $request->quantidade,
+            $modos,
+            $categorias
+        );
+
+        $valorUnitario = $request->valor_unitario ?? [];
+        $subtotais = $request->subtotal_item ?? [];
+
+        foreach ($valores as $i => $vu) {
+            $qtd = (float) __convert_value_bd((string) ($request->quantidade[$i] ?? 0));
+            $valorUnitario[$i] = __moeda($vu);
+            $subtotais[$i] = __moeda($vu * $qtd);
+        }
+
+        $request->merge([
+            'valor_unitario' => $valorUnitario,
+            'subtotal_item' => $subtotais,
+        ]);
+    }
+
     public function edit(Request $request, $id)
     {
-        $item = Venda::findOrFail($id);
+        $item = Venda::with(['itens.produto'])->findOrFail($id);
         if (!__valida_objeto($item)) {
             abort(403);
         }
@@ -526,6 +594,7 @@ class VendaController extends Controller
         $config = ConfigNota::where('empresa_id', $request->empresa_id)->first();
 
         $divisoes = DivisaoGrade::where('sub_divisao', false)->get();
+        $precoCategoriaJs = PrecoCategoriaVenda::configParaFrontend($categorias);
         return view(
             'vendas.edit',
             compact(
@@ -544,7 +613,8 @@ class VendaController extends Controller
                 'telasPedido',
                 'config',
                 'cidades',
-                'paises'
+                'paises',
+                'precoCategoriaJs'
             )
         );
     }
@@ -588,6 +658,7 @@ class VendaController extends Controller
                         'frete' => (float)$item->frete,
                     ];
                     $natureza = NaturezaOperacao::findOrFail($request->natureza_id);
+                    $this->sincronizarPrecosTabelaCategoria($request);
                     $valor_total = $this->somaItens($request);
                     $frete_id = null;
                     $freteAux = $item->frete;
@@ -612,6 +683,9 @@ class VendaController extends Controller
                         'usuario_id' => get_id_user(),
                         'transportadora_id' => $request->transportadora_id ? $request->transportadora_id : null,
                         'observacao' => $request->observacao ?? '',
+                        'aviso_entrega' => $request->aviso_entrega ?? null,
+                        'modo_preco_arabes' => $request->input('modo_preco_arabes', $item->modo_preco_arabes ?? 'auto'),
+                        'modo_preco_miniaturas' => $request->input('modo_preco_miniaturas', $item->modo_preco_miniaturas ?? 'auto'),
                         'qtd_volumes' => $request->qtd_volumes ?? 0,
                         'peso_liquido' => $request->peso_liquido ?? 0,
                         'peso_bruto' => $request->peso_bruto ?? 0,
@@ -737,6 +811,9 @@ class VendaController extends Controller
                         ]
                     );
                     $this->registrarMovimentacoesEdicaoVenda($item, $itensAntes, $itensDepois);
+                    $item->versao_pedido = (int) ($item->versao_pedido ?: 1) + 1;
+                    $item->save();
+                    \App\Helpers\EcommerceSync::syncFromVenda($item->fresh(['itens.produto']), true);
                     return ['virou_alteracao' => $virouAlteracaoPendente];
                 });
                 if (!empty($result['virou_alteracao'])) {
@@ -1001,6 +1078,9 @@ class VendaController extends Controller
         if (!__valida_objeto($item)) {
             return response()->json(['message' => 'Acesso negado.'], 403);
         }
+        if (!$this->podeImprimirFichaSeparacao($item)) {
+            return response()->json(['message' => 'Confirme o pedido antes de imprimir a ficha de separação.'], 400);
+        }
         $this->aplicarTransicaoImpressaoPedido($item);
         $item->refresh();
 
@@ -1008,11 +1088,65 @@ class VendaController extends Controller
             'ok' => true,
             'status_pedido' => $item->status_pedido,
             'status_pagamento' => $item->status_pagamento,
+            'versao_pedido' => (int) $item->versao_pedido,
+            'versao_ficha_impressa' => $item->versao_ficha_impressa,
         ]);
     }
 
+    private function podeImprimirFichaSeparacao(Venda $item): bool
+    {
+        if ($item->fechada_caixa || $item->estado_emissao === 'cancelado' || $item->status_pedido === 'cancelada') {
+            return false;
+        }
+
+        return in_array($item->status_pedido, [
+            'confirmado',
+            'em_separacao',
+            'separado',
+            'alteracao_pendente',
+            'em_rota_entrega',
+            'entregue',
+        ], true);
+    }
+
+    private function registrarImpressaoFichaSeparacao(Venda $item): void
+    {
+        $versao = (int) ($item->versao_pedido ?: 1);
+        $this->aplicarTransicaoImpressaoPedido($item);
+        $item->versao_ficha_impressa = $versao;
+        $item->ficha_impressa_em = now();
+        $item->save();
+        $this->registrarAuditoriaVenda(
+            $item->id,
+            'ficha_separacao_impressa',
+            'Ficha de separação impressa (versão ' . $versao . ' do pedido).',
+            [
+                'versao_pedido' => $versao,
+                'versao_ficha_impressa' => $versao,
+                'status_pedido' => $item->status_pedido,
+            ]
+        );
+    }
+
+    private function registrarDownloadPedidoPdf(Venda $item): void
+    {
+        $versao = (int) ($item->versao_pedido ?: 1);
+        $item->versao_pedido_pdf = $versao;
+        $item->pedido_pdf_em = now();
+        $item->save();
+        $this->registrarAuditoriaVenda(
+            $item->id,
+            'pedido_pdf_baixado',
+            'PDF do pedido baixado (versão ' . $versao . ').',
+            [
+                'versao_pedido' => $versao,
+                'versao_pedido_pdf' => $versao,
+            ]
+        );
+    }
+
     /**
-     * Confirmação → em separação ao imprimir (mesma regra do PDF).
+     * Confirmação → em separação ao imprimir a ficha de separação.
      */
     private function aplicarTransicaoImpressaoPedido(Venda $item): void
     {
@@ -1030,6 +1164,7 @@ class VendaController extends Controller
             'Status passou para «Em separação» ao imprimir/visualizar o pedido.',
             ['status_pedido' => $item->status_pedido]
         );
+        \App\Helpers\EcommerceSync::syncFromVenda($item, false);
     }
 
     public function print($id)
@@ -1045,8 +1180,10 @@ class VendaController extends Controller
         if (!__valida_objeto($item)) {
             abort(403);
         }
-        $this->aplicarTransicaoImpressaoPedido($item);
-        $item->refresh();
+        if (request()->boolean('download')) {
+            $this->registrarDownloadPedidoPdf($item);
+            $item->refresh();
+        }
         $item->load([
             'cliente.cidade',
             'itens.produto.categoria',
@@ -1063,11 +1200,11 @@ class VendaController extends Controller
         $pdf = ob_get_clean();
         $domPdf->setPaper("A4");
         $domPdf->render();
-        $domPdf->stream("Pedido de Venda $id.pdf", array("Attachment" => false));
+        $domPdf->stream("Pedido de Venda $id.pdf", ['Attachment' => request()->boolean('download')]);
     }
 
     /**
-     * PDF apenas com a ficha de separação (não altera status do pedido).
+     * PDF apenas com a ficha de separação.
      */
     public function printFichaSeparacao($id)
     {
@@ -1079,14 +1216,22 @@ class VendaController extends Controller
         if (!__valida_objeto($item)) {
             abort(403);
         }
+        if (!$this->podeImprimirFichaSeparacao($item)) {
+            session()->flash('flash_erro', 'Confirme o pedido antes de imprimir a ficha de separação.');
+            return redirect()->route('vendas.index');
+        }
+
+        $versaoFicha = (int) ($item->versao_pedido ?: 1);
+        $this->registrarImpressaoFichaSeparacao($item);
+        $item->refresh();
         $config = ConfigNota::where('empresa_id', $item->empresa_id)->first();
-        $p = view('vendas.print_ficha_document', compact('config', 'item'));
+        $p = view('vendas.print_ficha_document', compact('config', 'item', 'versaoFicha'));
         $domPdf = new Dompdf(["enable_remote" => true]);
         $domPdf->loadHtml($p);
         $pdf = ob_get_clean();
         $domPdf->setPaper("A4");
         $domPdf->render();
-        $domPdf->stream("Ficha separação pedido $id.pdf", array("Attachment" => false));
+        $domPdf->stream("Ficha separação pedido $id.pdf", ['Attachment' => request()->boolean('download')]);
     }
 
     public function routesTxt(Request $request)
@@ -1205,6 +1350,8 @@ class VendaController extends Controller
             ->where('estado_emissao', '!=', 'cancelado')
             ->where('status_pedido', '!=', 'cancelada')
             ->update(['status_pedido' => 'em_rota_entrega']);
+
+        \App\Helpers\EcommerceSync::syncByVendaIds($ids, false);
 
         return response($content)
             ->header('Content-Type', 'text/plain; charset=utf-8')
@@ -1495,6 +1642,8 @@ class VendaController extends Controller
             ]
         );
 
+        \App\Helpers\EcommerceSync::syncFromVenda($v);
+
         return response()->json([
             'ok' => true,
             'status_pedido' => $v->status_pedido,
@@ -1505,21 +1654,43 @@ class VendaController extends Controller
     public function workflowMarcarEntregue(Request $request)
     {
         $request->validate(['ids' => 'required|array', 'ids.*' => 'integer']);
+        $bloqueados = [];
         foreach ($request->ids as $id) {
             $v = Venda::find($id);
             if (!$v || !__valida_objeto($v) || $v->fechada_caixa) {
                 continue;
             }
-            if ($v->status_pedido === 'em_rota_entrega') {
-                $v->status_pedido = 'entregue';
-                $v->save();
-                $this->registrarAuditoriaVenda(
-                    $v->id,
-                    'workflow_marcar_entregue',
-                    'Pedido marcado como entregue.',
-                    ['status_pedido' => $v->status_pedido]
-                );
+            if ($v->status_pedido !== 'em_rota_entrega') {
+                continue;
             }
+
+            $itemRota = \App\Models\RotaEntregaItem::where('venda_id', $v->id)
+                ->whereHas('rota', function ($q) {
+                    $q->whereIn('status', ['rascunho', 'em_rota']);
+                })
+                ->first();
+
+            if ($itemRota && $itemRota->status_entrega === 'pendente') {
+                $bloqueados[] = '#' . $v->id;
+                continue;
+            }
+
+            $v->status_pedido = 'entregue';
+            $v->save();
+            $this->registrarAuditoriaVenda(
+                $v->id,
+                'workflow_marcar_entregue',
+                'Pedido marcado como entregue.',
+                ['status_pedido' => $v->status_pedido]
+            );
+            \App\Helpers\EcommerceSync::syncFromVenda($v);
+        }
+
+        if (!empty($bloqueados)) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Não é possível marcar como entregue sem confirmação na rota: ' . implode(', ', $bloqueados),
+            ], 422);
         }
 
         return response()->json(['ok' => true]);
@@ -1641,6 +1812,7 @@ class VendaController extends Controller
             'separado' => 'Separado',
             'alteracao_pendente' => 'Alteração pendente',
             'em_rota_entrega' => 'Em rota de entrega',
+            'ocorrencia_entrega' => 'Ocorrência na entrega',
             'entregue' => 'Entregue',
             'cancelada' => 'Cancelada',
         ];

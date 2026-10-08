@@ -42,6 +42,9 @@ Route::get('/error', function () {
     return view('sempermissao')->with('title', 'Acesso Bloqueado');
 });
 
+Route::get('/entrega/{token}', 'EntregaConfirmacaoController@show')->name('entrega.confirmar');
+Route::post('/entrega/{token}', 'EntregaConfirmacaoController@submit')->name('entrega.confirmar.submit');
+
 Route::group(['prefix' => 'migrador'], function () {
     Route::get('/{empresa_id}', 'MigradorController@index');
     Route::post('/', 'MigradorController@save');
@@ -479,6 +482,35 @@ Route::middleware([
     Route::resource('categorias', 'CategoriaController');
     Route::resource('marcas', 'MarcaController');
 
+    Route::group(['prefix' => 'ecommerce-usuarios'], function () {
+        Route::get('/', 'EcommerceUsuarioController@index')->name('ecommerce-usuarios.index');
+        Route::get('/buscar-clientes', 'EcommerceUsuarioController@buscarClientes')->name('ecommerce-usuarios.buscar-clientes');
+        Route::get('/{id}', 'EcommerceUsuarioController@show')->name('ecommerce-usuarios.show');
+        Route::post('/{id}/aprovar', 'EcommerceUsuarioController@aprovar')->name('ecommerce-usuarios.aprovar');
+        Route::post('/{id}/reprovar', 'EcommerceUsuarioController@reprovar')->name('ecommerce-usuarios.reprovar');
+        Route::post('/{id}/bloquear', 'EcommerceUsuarioController@bloquear')->name('ecommerce-usuarios.bloquear');
+        Route::post('/{id}/reativar', 'EcommerceUsuarioController@reativar')->name('ecommerce-usuarios.reativar');
+        Route::post('/{id}/alterar-senha', 'EcommerceUsuarioController@alterarSenha')->name('ecommerce-usuarios.alterar-senha');
+        Route::post('/{id}/criar-cliente', 'EcommerceUsuarioController@criarCliente')->name('ecommerce-usuarios.criar-cliente');
+    });
+
+    Route::group(['prefix' => 'ecommerce-frete'], function () {
+        Route::get('/', 'EcommerceFreteController@index')->name('ecommerce-frete.index');
+        Route::post('/', 'EcommerceFreteController@store')->name('ecommerce-frete.store');
+        Route::put('/{id}', 'EcommerceFreteController@update')->name('ecommerce-frete.update');
+        Route::delete('/{id}', 'EcommerceFreteController@destroy')->name('ecommerce-frete.destroy');
+        Route::get('/{id}/toggle', 'EcommerceFreteController@toggle')->name('ecommerce-frete.toggle');
+    });
+
+    Route::group(['prefix' => 'ecommerce-vendas'], function () {
+        Route::get('/', 'EcommerceVendaController@index')->name('ecommerce-vendas.index');
+        Route::get('/{id}', 'EcommerceVendaController@show')->name('ecommerce-vendas.show');
+        Route::post('/{id}/confirmar', 'EcommerceVendaController@confirmar')->name('ecommerce-vendas.confirmar');
+        Route::post('/{id}/cancelar', 'EcommerceVendaController@cancelar')->name('ecommerce-vendas.cancelar');
+        Route::post('/{id}/restaurar', 'EcommerceVendaController@restaurar')->name('ecommerce-vendas.restaurar');
+        Route::post('/{id}/atualizar-valores', 'EcommerceVendaController@atualizarValores')->name('ecommerce-vendas.atualizar-valores');
+    });
+
     Route::resource('naturezas', 'NaturezaController');
     Route::resource('tributos', 'TributoController');
     Route::resource('escritorio', 'EscritorioController');
@@ -786,6 +818,23 @@ Route::middleware([
 
     Route::resource('fluxoCaixa', 'FluxoCaixaController');
 
+    Route::group(['prefix' => 'rotas-entrega', 'as' => 'rotas-entrega.'], function () {
+        Route::get('/', 'RotaEntregaController@index')->name('index');
+        Route::post('/', 'RotaEntregaController@store')->name('store');
+        Route::get('/{id}/download', 'RotaEntregaController@download')->name('download');
+        Route::post('/{id}/salvar', 'RotaEntregaController@salvar')->name('salvar');
+        Route::post('/{id}/pagar-motoboy', 'RotaEntregaController@pagarMotoboy')->name('pagar-motoboy');
+        Route::post('/{id}/desfazer-pagamento-motoboy', 'RotaEntregaController@desfazerPagamentoMotoboy')->name('desfazer-pagamento-motoboy');
+        Route::post('/{id}/finalizar', 'RotaEntregaController@finalizar')->name('finalizar');
+        Route::patch('/{id}', 'RotaEntregaController@update')->name('update');
+        Route::delete('/{id}', 'RotaEntregaController@destroy')->name('destroy');
+        Route::patch('/{rota}/itens/{item}', 'RotaEntregaController@updateItem')->name('itens.update');
+        Route::delete('/{rota}/itens/{item}', 'RotaEntregaController@destroyItem')->name('itens.destroy');
+        Route::get('/{id}/pedidos-disponiveis', 'RotaEntregaController@pedidosDisponiveis')->name('pedidos-disponiveis');
+        Route::post('/{id}/itens', 'RotaEntregaController@adicionarItens')->name('itens.store');
+        Route::get('/{id}', 'RotaEntregaController@show')->name('show');
+    });
+
     Route::group(['prefix' => 'vendas'], function () {
         Route::get('/clone/{id}', 'VendaController@clone')->name('vendas.clone');
         Route::get('/details/{id}', 'VendaController@details')->name('vendas.details');
@@ -879,7 +928,12 @@ Route::middleware([
         Route::get('/todosApontamentos', 'StockController@todosApontamentos')->name('estoque.todosApontamentos');
         Route::get('/storeApontamento', 'StockController@storeApontamento')->name('estoque.storeApontamento');
         Route::post('/set-estoque-local', 'StockController@setEstoqueStore')->name('estoque.set-estoque-local');
-        //Route::get('/movimentacao/{id}', 'StockController@movimentacao')->name('estoque.movimentacao');
+
+        Route::get('/importacao-massa', 'ImportacaoMassaProdutoController@index')->name('estoque.importacaoMassa.index');
+        Route::get('/importacao-massa/modelo', 'ImportacaoMassaProdutoController@downloadModelo')->name('estoque.importacaoMassa.modelo');
+        Route::post('/importacao-massa/processar', 'ImportacaoMassaProdutoController@processar')->name('estoque.importacaoMassa.processar');
+        Route::post('/importacao-massa/confirmar', 'ImportacaoMassaProdutoController@confirmar')->name('estoque.importacaoMassa.confirmar');
+        Route::get('/importacao-massa/{id}', 'ImportacaoMassaProdutoController@show')->name('estoque.importacaoMassa.show');
     });
 
     Route::resource('estoque', 'StockController');
@@ -968,6 +1022,8 @@ Route::middleware([
     Route::resource('push', 'PushController');
 
     Route::resource('codigoDesconto', 'CodigoDescontoController');
+
+    Route::resource('promocoes', 'PromocaoController');
 
     Route::resource('tamanhosPizza', 'TamanhoPizzaController');
 

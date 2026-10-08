@@ -5,6 +5,7 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Models\ItemOrcamento;
 use App\Models\NfeRemessa;
+use App\Helpers\PrecoCategoriaVenda;
 use App\Models\Produto;
 use App\Models\Venda;
 use Illuminate\Http\Request;
@@ -40,17 +41,18 @@ class VendaController extends Controller
 
         $rand = rand(0, 10000000);
 
-        $product = Produto::with('estoque')->findOrFail($product_id);
+        $product = Produto::with(['estoque', 'categoria'])->findOrFail($product_id);
 
         if (!$product->estoque || $product->estoque->quantidade < $qtd) {
             $disponivel = $product->estoque->quantidade ?? 0;
-            // Retorna um JS com alert direto
             return response("alert('Estoque insuficiente para \"{$product->nome}\". Disponível: {$disponivel}');", 200)
                 ->header('Content-Type', 'application/javascript');
         }
 
+        $tabela_aplicada = PrecoCategoriaVenda::TIER_NORMAL;
+
         return view('vendas.partials.row_product_purchase', compact(
-            'product', 'qtd', 'value_unit', 'sub_total', 'rand'
+            'product', 'qtd', 'value_unit', 'sub_total', 'rand', 'tabela_aplicada'
         ));
     } catch (\Exception $e) {
         return response("alert('Erro ao adicionar produto: {$e->getMessage()}');", 200)

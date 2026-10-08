@@ -87,6 +87,14 @@ class Menu
 					[
 						'nome' => 'Usuários',
 						'rota' => route('usuarios.index')
+					],
+					[
+						'nome' => 'Usuários Site',
+						'rota' => route('ecommerce-usuarios.index')
+					],
+					[
+						'nome' => 'Frete por Bairro',
+						'rota' => route('ecommerce-frete.index')
 					]
 				]
 			],
@@ -157,6 +165,10 @@ class Menu
 					[
 						'nome' => 'Inventário',
 						'rota' => route('inventario.index')
+					],
+					[
+						'nome' => 'Importação em Massa',
+						'rota' => route('estoque.importacaoMassa.index')
 					]
 				]
 			],
@@ -177,6 +189,18 @@ class Menu
 					[
 						'nome' => 'Lista de Vendas',
 						'rota' => route('vendas.index')
+					],
+					[
+						'nome' => 'Vendas do Site',
+						'rota' => route('ecommerce-vendas.index')
+					],
+					[
+						'nome' => 'Promoções',
+						'rota' => route('promocoes.index')
+					],
+					[
+						'nome' => 'Rotas de entrega',
+						'rota' => route('rotas-entrega.index')
 					],
 					// [
 					// 	'nome' => 'Lista de Vendas - PDV',

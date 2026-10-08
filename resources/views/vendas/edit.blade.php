@@ -9,6 +9,14 @@
     .vendas-create-modern .desconto-resumo {
         color: #334155;
     }
+    /* Frete: sublinhado leve embaixo do campo inteiro (R$ + valor) indicando se já
+       foi preenchido (verde) ou ainda está pendente (amarelo, aviso — não obrigatório). */
+    .vendas-create-modern .frete-group.frete-preenchido {
+        border-bottom: 2px solid #86efac;
+    }
+    .vendas-create-modern .frete-group.frete-vazio-aviso {
+        border-bottom: 2px solid #fde68a;
+    }
 </style>
 @endsection
 @section('content')
@@ -176,7 +184,9 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 </script>
 <script type="text/javascript" src="/js/client.js"></script>
-<script type="text/javascript" src="/js/vendas.js"></script>
+<script>window.PRECO_CATEGORIA_CONFIG = @json($precoCategoriaJs ?? []);</script>
+<script type="text/javascript" src="/js/tabela_preco_venda.js?v=20260623"></script>
+<script type="text/javascript" src="/js/vendas.js?v=20260623"></script>
 <script type="text/javascript" src="/js/product.js"></script>
 <script type="text/javascript" src="/js/transportadora.js"></script>
 @if(session()->hasOldInput() && old('produto_id') && is_array(old('produto_id')))

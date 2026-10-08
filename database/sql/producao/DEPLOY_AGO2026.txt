@@ -1,0 +1,125 @@
+================================================================================
+DEPLOY PRODUÇÃO — ago/2026 (site + frete + ficha + rotas + tabela preço)
+================================================================================
+
+1) BACKUP
+   - Banco luxerp (e luxcatalogo se alterar)
+   - Pasta LUXERP no servidor
+   - Pasta api-lux (se for o mesmo servidor)
+   - Pasta do catálogo Next.js (se for publicar site também)
+
+--------------------------------------------------------------------------------
+2) SQL NO BANCO luxerp (phpMyAdmin / HeidiSQL)
+--------------------------------------------------------------------------------
+
+A) Frete por bairro + endereços (se ainda NÃO rodou no servidor):
+   → api-lux/sql/03-addresses-shipping.sql
+   (ou só a parte de ecommerce_shipping_neighborhoods / ecommerce_addresses
+    se ecommerce_orders já tiver delivery_*)
+
+B) Colunas novas desta entrega:
+   → LUXERP/database/sql/2026_08_12_rota_aviso_modo_preco.sql
+
+   Campos:
+   - rota_entrega_itens: embalagem_tipo, embalagem_qtd, aviso_entrega, confirmado_saida
+   - vendas: modo_preco_arabes, modo_preco_miniaturas, aviso_entrega
+
+   Se alguma coluna já existir, remova só o trecho que falhar.
+
+C) Aprovação de usuários do site (Cadastros → Usuários Site):
+   → LUXERP/database/sql/2026_08_13_ecommerce_users_aprovacao.sql
+   Campos: admin_notes, approved_at, approved_by, rejected_at, rejection_reason
+
+D) WhatsApp (api-lux):
+   Em config.php de PRODUÇÃO:
+   define('WHATSAPP_PHONE', '558399459629');  // +55 83 9945-9629
+
+--------------------------------------------------------------------------------
+3) ARQUIVOS LUXERP (FTP — manter pastas)
+--------------------------------------------------------------------------------
+
+NOVOS:
+  app/Http/Controllers/EcommerceFreteController.php
+  app/Models/EcommerceShippingNeighborhood.php
+  resources/views/ecommerce_frete/index.blade.php
+  database/sql/2026_08_12_rota_aviso_modo_preco.sql
+  database/migrations/2026_08_12_160000_add_rota_embalagem_aviso_confirmado.php  (opcional)
+
+SUBSTITUIR:
+  app/Helpers/Menu.php
+  app/Helpers/RotaEntregaHelper.php
+  app/Helpers/EcommerceSync.php                    (se já tiver sync site)
+  app/Providers/AppServiceProvider.php
+  app/Http/Controllers/RotaEntregaController.php
+  app/Http/Controllers/VendaController.php
+  app/Http/Controllers/EcommerceVendaController.php (se alterou)
+  app/Http/Controllers/EcommerceUsuarioController.php (se alterou)
+  app/Models/Venda.php
+  app/Models/RotaEntregaItem.php
+  routes/web.php
+  resources/views/default/layout.blade.php
+  resources/views/rotas_entrega/show.blade.php
+  resources/views/rotas_entrega/_item_card.blade.php
+  resources/views/vendas/_forms.blade.php
+  resources/views/vendas/show.blade.php
+  resources/views/vendas/print_ficha_separacao.blade.php
+  resources/views/vendas/_print_ficha_css.blade.php
+  resources/views/vendas/partials/painel_preco_categoria.blade.php
+  public/js/tabela_preco_venda.js
+  resources/views/ecommerce_vendas/*               (se alterou)
+  resources/views/ecommerce_usuarios/*             (se alterou)
+
+NÃO enviar (foi removido / não usar em produção):
+  resources/views/rotas_entrega/print_guia.blade.php
+
+--------------------------------------------------------------------------------
+4) ARQUIVOS api-lux (se publica API)
+--------------------------------------------------------------------------------
+  config.php                    → WHATSAPP_PHONE correto
+  api/addresses/index.php
+  api/orders/create.php
+  api/shipping/quote.php
+  api/whatsapp/send-order.php
+  sql/03-addresses-shipping.sql (já aplicado no passo 2)
+
+--------------------------------------------------------------------------------
+5) CATÁLOGO (Next.js) — se publica o site
+--------------------------------------------------------------------------------
+  app/checkout/page.tsx         (tipos Casa/Trabalho)
+  app/api/addresses/route.ts    (PUT)
+  .env de produção:
+    ERP_API_URL=...
+    NEXT_PUBLIC_WHATSAPP_URL=https://wa.me/558399459629
+    WHATSAPP_PHONE=558399459629
+  Rebuild: npm run build && restart PM2/serviço
+
+--------------------------------------------------------------------------------
+6) LIMPAR CACHE NO SERVIDOR (SSH)
+--------------------------------------------------------------------------------
+  php artisan cache:clear
+  php artisan config:clear
+  php artisan view:clear
+  php artisan route:clear
+
+--------------------------------------------------------------------------------
+7) TESTAR EM PRODUÇÃO
+--------------------------------------------------------------------------------
+  [ ] Cadastros → Frete por Bairro (criar/editar valor)
+  [ ] Checkout site: frete fixo / a combinar
+  [ ] WhatsApp abre no número +55 83 9945-9629
+  [ ] Vendas → confirmar pedido → botão print-ficha
+  [ ] PDF da ficha: topo com GUIA PARA DESTACAR
+      (cliente, pedidos, telefone, endereço, bairro, sacola/caixa, aviso)
+  [ ] Se mesmo cliente tiver 2 pedidos abertos, números aparecem juntos na guia
+  [ ] Campo "Aviso de entrega" na venda aparece na ficha
+  [ ] Editar venda com Atacado 1 (tabela 2) e reabrir: modo permanece
+  [ ] Rota: telefone obrigatório; pago na rota marca venda como pago
+  [ ] Rota: só salva com "Confirmado na rota"
+  [ ] Sino: pedidos site aguardando confirmação
+
+================================================================================
+NOTA SOBRE A FICHA
+================================================================================
+A guia para destacar NÃO fica em Rotas.
+Fica em: Vendas → print-ficha (mesmo botão amarelo da lista/detalhe).
+O PDF começa com a guia (borda tracejada) e em seguida a ficha de separação.

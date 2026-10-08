@@ -153,6 +153,7 @@ Route::group(['prefix' => 'cliente'], function () {
     Route::post('/store', 'API\\ClienteController@store');
     Route::post('/updateEndereco/{id}', 'API\\ClienteController@updateEndereco');
     Route::post('/updatePerfil/{id}', 'API\\ClienteController@updatePerfil');
+    Route::get('/frete-bairro', 'API\\ClienteController@freteBairro');
 });
 
 

@@ -168,38 +168,137 @@ $('#btn-store-categoria').click(() => {
 })
 
 
-$('#inp-percentual_lucro').keyup(() => {
-    let valorCompra = parseFloat($('#inp-valor_compra').val().replace(',', '.'));
-    let percentualLucro = parseFloat($('#inp-percentual_lucro').val().replace(',', '.'));
+$(function () {
+    initPrecificacaoProduto();
+});
 
-    if (valorCompra > 0 && percentualLucro > 0) {
-        let valorVenda = valorCompra + (valorCompra * (percentualLucro / 100));
-        valorVenda = formatReal(valorVenda);
-        valorVenda = valorVenda.replace('.', '')
-        valorVenda = valorVenda.substring(3, valorVenda.length)
+function initPrecificacaoProduto() {
+    const pares = {
+        normal: { perc: '#inp-percentual_lucro', preco: '#inp-valor_venda' },
+        atacado_1: { perc: '#inp-percentual_lucro_atacado_1', preco: '#inp-preco_2' },
+        atacado_2: { perc: '#inp-percentual_lucro_atacado_2', preco: '#inp-preco_3' },
+    };
 
-        $('#inp-valor_venda').val(valorVenda)
-    } else {
-        $('#inp-valor_venda').val('0')
+    $('#inp-valor_compra').on('input keyup change', function () {
+        syncPrecificacaoProduto('custo');
+    });
+
+    $('#inp-percentual_lucro').on('input keyup change', function () {
+        syncPrecificacaoProduto('perc', 'normal');
+    });
+    $('#inp-valor_venda').on('input keyup change', function () {
+        syncPrecificacaoProduto('preco', 'normal');
+    });
+
+    $('#inp-percentual_lucro_atacado_1').on('input keyup change', function () {
+        syncPrecificacaoProduto('perc', 'atacado_1');
+    });
+    $('#inp-preco_2').on('input keyup change', function () {
+        syncPrecificacaoProduto('preco', 'atacado_1');
+    });
+
+    $('#inp-percentual_lucro_atacado_2').on('input keyup change', function () {
+        syncPrecificacaoProduto('perc', 'atacado_2');
+    });
+    $('#inp-preco_3').on('input keyup change', function () {
+        syncPrecificacaoProduto('preco', 'atacado_2');
+    });
+
+    // Normaliza % ao carregar (evita decimais longos vindos do banco)
+    Object.keys(pares).forEach(function (par) {
+        const custo = parseMoedaInput($('#inp-valor_compra'));
+        const preco = parseMoedaInput($(pares[par].preco));
+        if (custo > 0 && preco > 0) {
+            setPercField($(pares[par].perc), calcLucroFromPreco(custo, preco));
+        }
+    });
+}
+
+function parseMoedaInput($el) {
+    const raw = ($el.val() || '').toString().trim();
+    if (!raw) return 0;
+    if (raw.includes(',')) {
+        return parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0;
     }
-})
+    return parseFloat(raw) || 0;
+}
 
+function roundMoney(n) {
+    return Math.round(n * 100) / 100;
+}
 
-$('#inp-valor_venda').keyup(() => {
-    let valorCompra = parseFloat($('#inp-valor_compra').val().replace(',', '.'));
-    let valorVenda = parseFloat($('#inp-valor_venda').val().replace(',', '.'));
+function calcPrecoFromLucro(custo, perc) {
+    if (custo <= 0 || perc <= 0) return 0;
+    return roundMoney(custo + (custo * perc / 100));
+}
 
-    if (valorCompra > 0 && valorVenda > 0) {
-        let dif = (valorVenda - valorCompra) / valorCompra * 100;
-        // valorVenda = formatReal(valorVenda);
-        // valorVenda = valorVenda.replace('.', '')
-        // valorVenda = valorVenda.substring(3, valorVenda.length)
+function calcLucroFromPreco(custo, preco) {
+    if (custo <= 0 || preco <= 0) return 0;
+    return roundMoney(((preco - custo) / custo) * 100);
+}
 
-        $('#inp-percentual_lucro').val(dif)
-    } else {
-        $('#inp-percentual_lucro').val('0')
+function setMoedaField($el, valor) {
+    if (valor <= 0) {
+        $el.val('');
+        return;
     }
-})
+    if (typeof convertFloatToMoeda === 'function') {
+        $el.val(convertFloatToMoeda(valor));
+    } else {
+        $el.val(valor.toFixed(2).replace('.', ','));
+    }
+}
+
+function setPercField($el, valor) {
+    if (valor <= 0) {
+        $el.val('');
+        return;
+    }
+    $el.val(roundMoney(valor).toFixed(2).replace('.', ','));
+}
+
+function reajusteAutomaticoAtivo() {
+    const $campo = $('#inp-reajuste_automatico');
+    return $campo.length === 0 || $campo.val() == '1';
+}
+
+function syncPrecificacaoProduto(tipo, par) {
+    const custo = parseMoedaInput($('#inp-valor_compra'));
+    const mapa = {
+        normal: { perc: '#inp-percentual_lucro', preco: '#inp-valor_venda' },
+        atacado_1: { perc: '#inp-percentual_lucro_atacado_1', preco: '#inp-preco_2' },
+        atacado_2: { perc: '#inp-percentual_lucro_atacado_2', preco: '#inp-preco_3' },
+    };
+
+    if (tipo === 'custo' && reajusteAutomaticoAtivo()) {
+        ['normal', 'atacado_1', 'atacado_2'].forEach(function (p) {
+            const perc = parseMoedaInput($(mapa[p].perc));
+            if (custo > 0 && perc > 0) {
+                setMoedaField($(mapa[p].preco), calcPrecoFromLucro(custo, perc));
+            }
+        });
+        return;
+    }
+
+    if (!par || !mapa[par]) return;
+
+    const $perc = $(mapa[par].perc);
+    const $preco = $(mapa[par].preco);
+
+    if (tipo === 'perc') {
+        const perc = parseMoedaInput($perc);
+        if (custo > 0 && perc > 0) {
+            setMoedaField($preco, calcPrecoFromLucro(custo, perc));
+        }
+    }
+
+    if (tipo === 'preco') {
+        const preco = parseMoedaInput($preco);
+        if (custo > 0 && preco > 0) {
+            setPercField($perc, calcLucroFromPreco(custo, preco));
+        }
+    }
+}
 
 function formatReal(v) {
     return v.toLocaleString('pt-br', { style: 'currency', currency: 'BRL', minimumFractionDigits: casas_decimais });

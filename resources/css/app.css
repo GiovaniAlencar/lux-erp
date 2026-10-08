@@ -42,6 +42,38 @@
     border-radius: .5rem !important;
 }
 
+/*
+ * Input-group: o border-radius global acima quebra o encaixe (R$ + campo).
+ * Restaura cantos só nas pontas externas do grupo — padrão Bootstrap.
+ */
+.input-group > .form-control,
+.input-group > .form-select,
+.input-group > .input-group-text,
+.input-group > .btn {
+    border-radius: 0 !important;
+}
+.input-group > :first-child,
+.input-group > .form-floating:first-child > .form-control,
+.input-group > .form-floating:first-child > .form-select {
+    border-top-left-radius: .5rem !important;
+    border-bottom-left-radius: .5rem !important;
+}
+.input-group > :last-child,
+.input-group > .form-floating:last-child > .form-control,
+.input-group > .form-floating:last-child > .form-select {
+    border-top-right-radius: .5rem !important;
+    border-bottom-right-radius: .5rem !important;
+}
+/* Select2 dentro de input-group */
+.input-group > .select2-container:first-child .select2-selection {
+    border-top-right-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+}
+.input-group > .select2-container:last-child .select2-selection {
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+}
+
 /* Cartões mais destacados visualmente */
 .card {
     box-shadow: 0 12px 28px rgba(0, 0, 0, .08);
@@ -261,11 +293,14 @@ html:not(.dark-theme) .topbar {
 .input-group .btn { height: 42px; border-top-left-radius: 0; border-bottom-left-radius: 0; }
 
 /* Vendas create - padroniza alturas e alinhamento */
-.vendas-create-modern .card .form-control,
-.vendas-create-modern .card .form-select { height: 42px; border-radius: .5rem; }
+.vendas-create-modern .card .form-control:not(textarea),
+.vendas-create-modern .card .form-select { height: 42px; }
+.vendas-create-modern .card textarea.form-control { min-height: 84px; height: auto; }
+.vendas-create-modern .input-group > .form-control,
+.vendas-create-modern .input-group > .input-group-text { height: 42px; }
 .vendas-create-modern .input-group .btn { height: 42px; display: inline-flex; align-items: center; justify-content: center; }
 .vendas-create-modern .input-group .btn { width: 42px; }
-.vendas-create-modern .input-group .select2-container .select2-selection--single { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.vendas-create-modern .input-group .select2-container .select2-selection--single { border-top-right-radius: 0 !important; border-bottom-right-radius: 0 !important; }
 .vendas-create-modern .select2-container .select2-selection--single { height: 42px; border-radius: .5rem; border: 1px solid #e5e7eb; display: flex; align-items: center; }
 .vendas-create-modern .select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 42px; padding-left: .75rem; }
 .vendas-create-modern .select2-container--default .select2-selection--single .select2-selection__arrow { height: 42px; right: .5rem; }

@@ -420,11 +420,9 @@ class CompraFiscalController extends Controller
                         'valor_unitario' => __convert_value_bd($request->valor_unitario[$i]),
                         'unidade_compra' => $request->unidade_compra[$i],
                     ]);
+                    $custoAnterior = (float) $product->valor_compra;
                     $product->valor_compra = __convert_value_bd($request->valor_unitario[$i]);
-                    if ($product->reajuste_automatico) {
-                        $product->valor_venda = $product->valor_compra +
-                        (($product->valor_compra * $product->percentual_lucro) / 100);
-                    }
+                    $product->aplicarReajusteAutomatico($custoAnterior);
                     $product->save();
                     $stockMove->pluStock(
                         $product->id,

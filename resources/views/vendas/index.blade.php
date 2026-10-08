@@ -85,12 +85,10 @@
     #lux-vendas-index .lux-acoes-grupo button:active {
         transform: scale(0.96);
     }
-    /* Menu impressão (evita overflow-hidden que corta o painel) */
-    #lux-vendas-index .lux-print-menu summary {
-        list-style: none;
-    }
-    #lux-vendas-index .lux-print-menu summary::-webkit-details-marker {
-        display: none;
+    #lux-vendas-index .btn-print-ficha.lux-btn-ficha-off {
+        opacity: 0.38;
+        pointer-events: none;
+        cursor: not-allowed;
     }
     /* Cópia rápida (Excel): feedback visual sem mudar cor do texto na tela */
     #lux-vendas-index .lux-copy-nome,
@@ -143,6 +141,20 @@
         font-size: 0.8125rem;
         min-height: calc(1.45em + 0.35rem + 2px);
     }
+    #lux-vendas-index .lux-filter-caixa-wrap .lux-filter-caixa-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+    #lux-vendas-index .lux-filter-caixa-wrap .lux-filter-caixa-select.is-active {
+        border-color: rgb(34 197 94 / 0.55);
+        box-shadow: 0 0 0 1px rgb(34 197 94 / 0.2);
+    }
+    #lux-vendas-index[data-vendas-ui="dark"] .lux-filter-caixa-wrap .lux-filter-caixa-select.is-active {
+        border-color: rgb(74 222 128 / 0.5);
+        box-shadow: 0 0 0 1px rgb(74 222 128 / 0.15);
+        background-color: rgb(34 197 94 / 0.08);
+    }
     #lux-vendas-index .lux-acoes-grupo svg {
         width: 1rem;
         height: 1rem;
@@ -191,6 +203,7 @@
         'separado' => $luxBadgeNeutral,
         'alteracao_pendente' => $luxBadgeNeutral,
         'em_rota_entrega' => $luxBadgeNeutral,
+        'ocorrencia_entrega' => $luxBadgeNeutral,
         'entregue' => $luxBadgeNeutral,
         'cancelada' => $badgeCancelada,
     ];
@@ -208,6 +221,7 @@
         'separado' => 'package-check',
         'alteracao_pendente' => 'triangle-alert',
         'em_rota_entrega' => 'truck',
+        'ocorrencia_entrega' => 'triangle-alert',
         'entregue' => 'house',
         'cancelada' => 'ban',
     ];
@@ -288,6 +302,20 @@
                         @endforeach
                     </select>
                 </div>
+                @if(!empty($usuarioAdm))
+                <div class="col-xl-2 col-lg-2 col-md-6 lux-filter-caixa-wrap">
+                    <label class="form-label small mb-0 lux-filter-caixa-label @if($vendasUiDark) text-gray-400 @else text-gray-600 @endif" for="filter_somente_abertos">
+                        <i data-lucide="lock-keyhole" class="size-3.5 shrink-0 opacity-80" aria-hidden="true"></i>
+                        Caixa
+                    </label>
+                    <select name="filter_somente_abertos" id="filter_somente_abertos"
+                        class="form-select form-select-sm lux-filter-caixa-select {{ !empty($filter_somente_abertos) ? 'is-active' : '' }}"
+                        title="Filtrar vendas abertas ou fechadas no caixa (somente ADM)">
+                        <option value="">Todos</option>
+                        <option value="1" {{ !empty($filter_somente_abertos) ? 'selected' : '' }}>Somente abertos</option>
+                    </select>
+                </div>
+                @endif
                 <div class="col-12 col-lg-auto ms-lg-auto d-flex flex-wrap align-items-end gap-2 filter-actions">
                     <button class="inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white shadow-sm transition-all duration-200 ease-out hover:bg-indigo-500 active:scale-[0.98]" type="submit" title="Aplicar os filtros e atualizar a lista" data-bs-toggle="tooltip" data-bs-placement="top">
                         <i data-lucide="search" class="size-3.5"></i>
@@ -326,13 +354,17 @@
                     <i data-lucide="check-square" class="size-3.5"></i>
                     <span id="btn-select-all-label">Selecionar todos</span>
                 </button>
-                <button type="button" class="inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium shadow-sm transition-all duration-200 ease-out hover:shadow-md active:scale-[0.98] @if($vendasUiDark) border-amber-400/35 bg-amber-500/10 text-amber-100 hover:bg-amber-500/18 @else border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100 @endif" id="btn-print-selected" title="Registra impressão e abre o PDF de cada venda selecionada" data-bs-toggle="tooltip" data-bs-placement="top">
+                <button type="button" class="inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium shadow-sm transition-all duration-200 ease-out hover:shadow-md active:scale-[0.98] @if($vendasUiDark) border-amber-400/35 bg-amber-500/10 text-amber-100 hover:bg-amber-500/18 @else border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100 @endif" id="btn-print-selected" title="Imprime a ficha de separação de cada venda confirmada selecionada" data-bs-toggle="tooltip" data-bs-placement="top">
                     <i data-lucide="printer" class="size-3.5"></i>
-                    Imprimir selecionados
+                    Ficha selecionados
                 </button>
-                <button type="button" class="inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium shadow-sm transition-all duration-200 ease-out hover:shadow-md active:scale-[0.98] @if($vendasUiDark) border-indigo-400/35 bg-indigo-500/10 text-indigo-100 hover:bg-indigo-500/18 @else border-indigo-200 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 @endif" id="btn-routes-txt" title="Baixa arquivo TXT de rota para entregas selecionadas" data-bs-toggle="tooltip" data-bs-placement="top">
+                <button type="button" class="inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium shadow-sm transition-all duration-200 ease-out hover:shadow-md active:scale-[0.98] @if($vendasUiDark) border-sky-400/35 bg-sky-500/10 text-sky-100 hover:bg-sky-500/18 @else border-sky-200 bg-sky-50 text-sky-900 hover:bg-sky-100 @endif" id="btn-download-selected" title="Baixa o PDF do pedido (sem ficha) de cada venda selecionada" data-bs-toggle="tooltip" data-bs-placement="top">
+                    <i data-lucide="download" class="size-3.5"></i>
+                    Baixar pedido (PDF)
+                </button>
+                <button type="button" class="inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium shadow-sm transition-all duration-200 ease-out hover:shadow-md active:scale-[0.98] @if($vendasUiDark) border-indigo-400/35 bg-indigo-500/10 text-indigo-100 hover:bg-indigo-500/18 @else border-indigo-200 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 @endif" id="btn-gerar-rota" title="Cria rota de entrega com os pedidos selecionados" data-bs-toggle="tooltip" data-bs-placement="top">
                     <i data-lucide="map" class="size-3.5"></i>
-                    Gerar rotas (TXT)
+                    Gerar rota
                 </button>
                 <button type="button" class="inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium shadow-sm transition-all duration-200 ease-out hover:shadow-md active:scale-[0.98] @if($vendasUiDark) border-emerald-400/35 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/18 @else border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 @endif" id="btn-marcar-entregue" title="Marca como entregue apenas vendas em rota de entrega" data-bs-toggle="tooltip" data-bs-placement="top">
                     <i data-lucide="circle-check" class="size-3.5"></i>
@@ -370,6 +402,13 @@
                                 $icoPed = $lucidePedido[$stPed] ?? 'circle';
                                 $icoPag = $lucidePagamento[$stPag] ?? 'circle';
                                 $showDelete = !$item->fechada_caixa && ($item->estado_emissao == 'novo' || $item->estado_emissao == 'rejeitado');
+                                $podeFicha = in_array($stPed, ['confirmado', 'em_separacao', 'separado', 'alteracao_pendente', 'em_rota_entrega', 'entregue'], true);
+                                $rotaItem = $rotaPorVenda[$item->id] ?? null;
+                                $rotaTooltip = '';
+                                if ($stPed === 'em_rota_entrega' && $rotaItem) {
+                                    $motoboyRota = optional($rotaItem->rota)->motoboy_nome ?: 'não informado';
+                                    $rotaTooltip = 'Rota #' . $rotaItem->rota_entrega_id . ' · Motoboy: ' . $motoboyRota;
+                                }
                             @endphp
                             <tr data-venda-row="{{ $item->id }}"
                                 data-status-pedido="{{ $item->status_pedido ?? 'aguardando_confirmacao' }}"
@@ -383,6 +422,12 @@
                                 <td class="px-2 py-2.5 align-middle">
                                     <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 leading-snug">
                                         <span class="font-semibold text-sm tracking-tight @if($vendasUiDark) text-gray-100 @else text-gray-900 @endif">#{{ $item->id }}</span>
+                                        @if(($item->origem ?? 'erp') === 'site')
+                                            <span class="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded @if($vendasUiDark) bg-amber-500/20 text-amber-300 @else bg-amber-100 text-amber-800 @endif">Site</span>
+                                        @else
+                                            <span class="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded @if($vendasUiDark) bg-slate-500/20 text-slate-300 @else bg-slate-100 text-slate-600 @endif">ERP</span>
+                                        @endif
+                                        <span class="text-[10px] font-medium tabular-nums @if($vendasUiDark) text-gray-500 @else text-gray-500 @endif">v{{ (int) ($item->versao_pedido ?? 1) }}</span>
                                         <span class="text-xs tabular-nums @if($vendasUiDark) text-gray-500 @else text-gray-500 @endif">{{ __data_pt($item->created_at, false) }}</span>
                                     </div>
                                     <div class="text-sm leading-snug mt-1 @if($vendasUiDark) text-gray-300 @else text-gray-700 @endif">
@@ -410,15 +455,20 @@
                                 </td>
                                 <td class="px-2 py-2.5 align-middle">
                                     <div class="td-wf-status flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                                        <div class="td-wf-pedido shrink-0">
+                                        <div class="td-wf-pedido shrink-0 flex flex-col items-start gap-0.5">
                                         @if($pedidoClicavel)
                                             <span role="button" class="wf-pedido {{ $clsPed }} cursor-pointer" data-venda="{{ $item->id }}" data-acao="{{ $acaoPedido }}" title="Clique para avançar o status do pedido">
                                                 <i data-lucide="{{ $icoPed }}" class="size-3.5 shrink-0" aria-hidden="true"></i>{{ $labelStatusPedidoVenda[$stPed] ?? $stPed }}
                                             </span>
                                         @else
-                                            <span class="{{ $clsPed }}">
+                                            <span class="{{ $clsPed }}" @if($rotaTooltip) data-bs-toggle="tooltip" data-bs-placement="top" title="{{ $rotaTooltip }}" @endif>
                                                 <i data-lucide="{{ $icoPed }}" class="size-3.5 shrink-0" aria-hidden="true"></i>{{ $labelStatusPedidoVenda[$stPed] ?? $stPed }}
                                             </span>
+                                            @if($stPed === 'em_rota_entrega' && $rotaItem)
+                                            <div class="w-full text-[10px] leading-tight mt-0.5 @if($vendasUiDark) text-sky-300/90 @else text-sky-700 @endif" title="{{ $rotaTooltip }}">
+                                                Rota #{{ $rotaItem->rota_entrega_id }} · {{ optional($rotaItem->rota)->motoboy_nome ?: 'Motoboy não informado' }}
+                                            </div>
+                                            @endif
                                         @endif
                                         </div>
                                         <div class="td-wf-pagamento shrink-0">
@@ -466,15 +516,20 @@
                                                     <i data-lucide="pencil" class="size-4"></i>
                                                 </a>
                                             @endif
-                                            <details class="lux-print-menu relative inline-flex border-l @if($vendasUiDark) border-gray-600/80 @else border-gray-200 @endif">
-                                                <summary class="inline-flex cursor-pointer list-none items-center justify-center p-2 transition-colors @if($vendasUiDark) text-amber-100/95 bg-gray-800/95 hover:bg-amber-500/22 @else text-amber-800 bg-white hover:bg-amber-50 @endif {{ !$showDelete ? 'rounded-r-xl' : '' }}" title="Imprimir — pedido completo ou ficha de separação" aria-label="Menu impressão">
-                                                    <i data-lucide="printer" class="size-4"></i>
-                                                </summary>
-                                                <div class="absolute right-0 top-full z-[200] mt-1 min-w-[12.5rem] rounded-xl border py-1 shadow-xl ring-1 @if($vendasUiDark) border-gray-600/90 bg-gray-900 shadow-black/40 ring-white/10 @else border-gray-200 bg-white shadow-gray-300/50 ring-gray-900/5 @endif">
-                                                    <a href="{{ route('vendas.print', $item->id) }}" target="_blank" rel="noopener noreferrer" class="block px-3 py-2.5 text-left text-sm transition-colors @if($vendasUiDark) text-gray-100 hover:bg-gray-800 @else text-gray-800 hover:bg-gray-50 @endif">Pedido completo (PDF)</a>
-                                                    <a href="{{ route('vendas.print-ficha', $item->id) }}" target="_blank" rel="noopener noreferrer" class="block px-3 py-2.5 text-left text-sm transition-colors border-t @if($vendasUiDark) text-gray-100 hover:bg-gray-800 border-gray-700/80 @else text-gray-800 hover:bg-gray-50 border-gray-200 @endif">Ficha de separação</a>
-                                                </div>
-                                            </details>
+                                            <a href="{{ route('vendas.print', ['id' => $item->id, 'download' => 1]) }}"
+                                                class="inline-flex items-center justify-center p-2 border-l btn-download-pedido @if($vendasUiDark) text-sky-100/95 bg-gray-800/95 border-gray-600/80 hover:bg-sky-500/22 @else text-sky-800 bg-white border-gray-200 hover:bg-sky-50 @endif"
+                                                title="Baixar PDF do pedido (sem ficha de separação)" aria-label="Baixar pedido PDF" data-bs-toggle="tooltip" data-bs-placement="top">
+                                                <i data-lucide="download" class="size-4"></i>
+                                            </a>
+                                            <a href="{{ $podeFicha ? route('vendas.print-ficha', $item->id) : '#' }}"
+                                                target="{{ $podeFicha ? '_blank' : '_self' }}"
+                                                rel="noopener noreferrer"
+                                                data-ficha-enabled="{{ $podeFicha ? '1' : '0' }}"
+                                                data-venda-id="{{ $item->id }}"
+                                                class="btn-print-ficha inline-flex items-center justify-center p-2 border-l @if($vendasUiDark) text-amber-100/95 bg-gray-800/95 border-gray-600/80 hover:bg-amber-500/22 @else text-amber-800 bg-white border-gray-200 hover:bg-amber-50 @endif {{ !$podeFicha ? 'lux-btn-ficha-off' : '' }}"
+                                                title="{{ $podeFicha ? 'Imprimir ficha de separação' : 'Confirme o pedido para imprimir a ficha' }}" aria-label="Imprimir ficha" data-bs-toggle="tooltip" data-bs-placement="top">
+                                                <i data-lucide="printer" class="size-4"></i>
+                                            </a>
                                             @if($showDelete)
                                                 <button type="submit" class="inline-flex items-center justify-center p-2 border-l btn-delete venda-acao-excluir rounded-r-xl @if($vendasUiDark) text-rose-300 bg-gray-800/95 border-gray-600/80 hover:bg-rose-500/22 @else text-rose-600 bg-white border-gray-200 hover:bg-rose-50 @endif" title="Excluir venda (apenas NF-e novo ou rejeitado)" aria-label="Excluir" data-bs-toggle="tooltip" data-bs-placement="top">
                                                     <i data-lucide="trash-2" class="size-4"></i>
@@ -618,6 +673,9 @@ $(function () {
             allowClear: true
         });
     }
+    $('#filter_somente_abertos').on('change', function () {
+        $(this).toggleClass('is-active', $(this).val() === '1');
+    });
 });
 
 /** Ícones Lucide (inclui células atualizadas por workflow) */
@@ -691,7 +749,8 @@ document.addEventListener('DOMContentLoaded', function(){
     const selectAllBtn = document.getElementById('btn-select-all');
     const selectAllLabel = document.getElementById('btn-select-all-label');
     const printBtn = document.getElementById('btn-print-selected');
-    const txtBtn = document.getElementById('btn-routes-txt');
+    const downloadBtn = document.getElementById('btn-download-selected');
+    const rotaBtn = document.getElementById('btn-gerar-rota');
     const entregueBtn = document.getElementById('btn-marcar-entregue');
     const csrf = '{{ csrf_token() }}';
     window.LUX_VENDAS_USUARIO_ADM = @json(!empty($usuarioAdm));
@@ -712,6 +771,7 @@ document.addEventListener('DOMContentLoaded', function(){
         separado: 'package-check',
         alteracao_pendente: 'triangle-alert',
         em_rota_entrega: 'truck',
+        ocorrencia_entrega: 'triangle-alert',
         entregue: 'house',
         cancelada: 'ban'
     };
@@ -731,6 +791,25 @@ document.addEventListener('DOMContentLoaded', function(){
     function pedidoAcaoPorStatus(st) {
         const m = { aguardando_confirmacao: 'confirmar_pedido', em_elaboracao: 'confirmar_pedido', em_separacao: 'marcar_separado', alteracao_pendente: 'confirmar_alteracao' };
         return m[st] || '';
+    }
+
+    const FICHA_PRINT_ALLOWED = ['confirmado', 'em_separacao', 'separado', 'alteracao_pendente', 'em_rota_entrega', 'entregue'];
+
+    function podeImprimirFicha(status) {
+        return FICHA_PRINT_ALLOWED.indexOf(status) !== -1;
+    }
+
+    function syncPrintFichaBtn(tr) {
+        const btn = tr.querySelector('.btn-print-ficha');
+        if (!btn) return;
+        const st = tr.dataset.statusPedido;
+        const ok = podeImprimirFicha(st);
+        const vid = tr.getAttribute('data-venda-row');
+        btn.dataset.fichaEnabled = ok ? '1' : '0';
+        btn.href = ok ? (printFichaBase + '/' + encodeURIComponent(vid)) : '#';
+        btn.target = ok ? '_blank' : '_self';
+        btn.classList.toggle('lux-btn-ficha-off', !ok);
+        btn.title = ok ? 'Imprimir ficha de separação' : 'Confirme o pedido para imprimir a ficha';
     }
 
     function iconPedHtml(st) {
@@ -759,6 +838,7 @@ document.addEventListener('DOMContentLoaded', function(){
         } else {
             td.innerHTML = '<span class="' + cls + '">' + ico + escapeHtml(label) + '</span>';
         }
+        syncPrintFichaBtn(tr);
         syncLinhaVendaAlerta(tr);
         luxVendasLucideRefresh();
     }
@@ -865,46 +945,87 @@ document.addEventListener('DOMContentLoaded', function(){
     });
     var printStatusBase = "{{ url('vendas/print-status') }}";
     var printPdfBase = "{{ url('vendas/print') }}";
-    if (printBtn){
-        printBtn.addEventListener('click', function() {
-            const ids = getSelectedIds();
-            if(ids.length === 0){
-                swal("Atenção", "Selecione pelo menos uma venda!", "warning");
-                return;
-            }
-            (async function() {
-                for (var i = 0; i < ids.length; i++) {
-                    var vid = ids[i];
-                    try {
-                        var res = await fetch(printStatusBase + '/' + encodeURIComponent(vid), {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': csrf,
-                                'Accept': 'application/json'
-                            },
-                            body: JSON.stringify({})
-                        });
-                        var j = await res.json().catch(function() { return {}; });
-                        if (res.ok && j.status_pedido) {
-                            renderPedidoCell(parseInt(vid, 10), j.status_pedido);
-                        }
-                    } catch (err) {}
-                    window.open(printPdfBase + '/' + encodeURIComponent(vid), '_blank');
-                    await new Promise(function(r) { setTimeout(r, 250); });
-                }
-                toastOk('Impressão aberta; status atualizado na lista.');
-            })();
-        });
-    }
+    var printFichaBase = "{{ url('vendas/print-ficha') }}";
 
-    async function gerarRotasTxt(confirmarAlteracoes) {
+    document.body.addEventListener('click', function(ev) {
+        var ficha = ev.target.closest('.btn-print-ficha');
+        if (ficha && ficha.dataset.fichaEnabled !== '1') {
+            ev.preventDefault();
+            swal("Atenção", "Confirme o pedido antes de imprimir a ficha de separação.", "warning");
+        }
+    });
+
+    async function processSelectedFichas() {
         const ids = getSelectedIds();
         if (ids.length === 0) {
             swal("Atenção", "Selecione pelo menos uma venda!", "warning");
             return;
         }
-        const res = await fetch("{{ route('vendas.routes-txt') }}", {
+        for (var i = 0; i < ids.length; i++) {
+            var vid = ids[i];
+            var tr = document.querySelector('tr[data-venda-row="' + vid + '"]');
+            if (!tr || !podeImprimirFicha(tr.dataset.statusPedido)) {
+                continue;
+            }
+            try {
+                var res = await fetch(printStatusBase + '/' + encodeURIComponent(vid), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrf,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({})
+                });
+                var j = await res.json().catch(function() { return {}; });
+                if (res.ok && j.status_pedido) {
+                    renderPedidoCell(parseInt(vid, 10), j.status_pedido);
+                }
+            } catch (err) {}
+            window.open(printFichaBase + '/' + encodeURIComponent(vid), '_blank');
+            await new Promise(function(r) { setTimeout(r, 350); });
+        }
+        toastOk('Ficha de separação aberta; status atualizado na lista.');
+    }
+
+    async function processSelectedPedidoPdf() {
+        const ids = getSelectedIds();
+        if (ids.length === 0) {
+            swal("Atenção", "Selecione pelo menos uma venda!", "warning");
+            return;
+        }
+        for (var i = 0; i < ids.length; i++) {
+            var vid = ids[i];
+            var url = printPdfBase + '/' + encodeURIComponent(vid) + '?download=1';
+            var link = document.createElement('a');
+            link.href = url;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            await new Promise(function(r) { setTimeout(r, 350); });
+        }
+        toastOk('Download do pedido iniciado.');
+    }
+
+    if (printBtn) {
+        printBtn.addEventListener('click', function() { processSelectedFichas(); });
+    }
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', function() { processSelectedPedidoPdf(); });
+    }
+
+    document.querySelectorAll('tr[data-venda-row]').forEach(function(tr) {
+        syncPrintFichaBtn(tr);
+    });
+
+    async function gerarRota(confirmarAlteracoes) {
+        const ids = getSelectedIds();
+        if (ids.length === 0) {
+            swal("Atenção", "Selecione pelo menos uma venda!", "warning");
+            return;
+        }
+        const res = await fetch("{{ route('rotas-entrega.store') }}", {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -923,7 +1044,7 @@ document.addEventListener('DOMContentLoaded', function(){
                     buttons: true,
                     dangerMode: true
                 }).then(function(ok) {
-                    if (ok) gerarRotasTxt(true);
+                    if (ok) gerarRota(true);
                 });
                 return;
             }
@@ -933,32 +1054,23 @@ document.addEventListener('DOMContentLoaded', function(){
             swal("Atenção", j.message || "Venda fechada no caixa.", "warning");
             return;
         }
-        if (!res.ok) {
+        if (res.status === 409) {
             const j = await res.json().catch(function() { return {}; });
-            swal("Erro", j.message || "Não foi possível gerar o TXT.", "error");
+            swal("Pedido em outra rota", j.message || "Um ou mais pedidos já estão em rota ativa.", "warning");
             return;
         }
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'rotas-{{ date("Ymd") }}.txt';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-        ids.forEach(function(id) {
-            var tr = document.querySelector('tr[data-venda-row="' + id + '"]');
-            if (!tr || tr.dataset.fechadaCaixa === '1') return;
-            if (tr.dataset.estadoEmissao === 'cancelado') return;
-            var st = tr.dataset.statusPedido;
-            if (st === 'cancelada') return;
-            renderPedidoCell(id, 'em_rota_entrega');
-        });
-        toastOk('Rota gerada; status atualizado na lista.');
+        if (!res.ok) {
+            const j = await res.json().catch(function() { return {}; });
+            swal("Erro", j.message || "Não foi possível criar a rota.", "error");
+            return;
+        }
+        const j = await res.json();
+        if (j.redirect) {
+            window.location.href = j.redirect;
+        }
     }
-    if (txtBtn) {
-        txtBtn.addEventListener('click', function() { gerarRotasTxt(false); });
+    if (rotaBtn) {
+        rotaBtn.addEventListener('click', function() { gerarRota(false); });
     }
 
     if (entregueBtn) {
@@ -1039,6 +1151,10 @@ document.addEventListener('DOMContentLoaded', function(){
                     }
                     if (x.j && x.j.status_pedido) {
                         renderPedidoCell(parseInt(id, 10), x.j.status_pedido);
+                    }
+                    if (acao === 'confirmar_pedido') {
+                        var trConf = document.querySelector('tr[data-venda-row="' + id + '"]');
+                        if (trConf) syncPrintFichaBtn(trConf);
                     }
                     toastOk('Status atualizado.');
                 });

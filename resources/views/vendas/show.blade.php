@@ -28,6 +28,7 @@
         'separado' => 'Separado',
         'alteracao_pendente' => 'Alteração pendente',
         'em_rota_entrega' => 'Em rota de entrega',
+        'ocorrencia_entrega' => 'Ocorrência na entrega',
         'entregue' => 'Entregue',
         'cancelada' => 'Cancelada',
     ];
@@ -44,6 +45,7 @@
         'separado' => 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
         'alteracao_pendente' => 'bg-rose-500/15 text-rose-300 border-rose-500/30',
         'em_rota_entrega' => 'bg-violet-500/15 text-violet-300 border-violet-500/30',
+        'ocorrencia_entrega' => 'bg-rose-500/15 text-rose-300 border-rose-500/30',
         'entregue' => 'bg-teal-500/15 text-teal-300 border-teal-500/30',
         'cancelada' => 'bg-gray-500/20 text-gray-400 border-gray-600',
     ];
@@ -71,6 +73,10 @@
         'workflow_marcar_pago' => 'Pagamento registrado',
         'workflow_marcar_entregue' => 'Marcado como entregue',
         'fluxo_impressao_em_separacao' => 'Foi para separação (impressão)',
+        'ficha_separacao_impressa' => 'Ficha de separação impressa',
+        'pedido_pdf_baixado' => 'PDF do pedido baixado',
+        'entrega_confirmada_motoboy' => 'Entrega confirmada (motoboy)',
+        'entrega_ocorrencia_motoboy' => 'Ocorrência na entrega (motoboy)',
         'caixa_fechada' => 'Caixa fechado (ADM)',
     ];
 @endphp
@@ -186,6 +192,12 @@
                             <p class="text-gray-500 text-xs uppercase tracking-wide mb-1">Data de entrega</p>
                             <p class="text-gray-100">{{ $item->data_entrega ?? '—' }}</p>
                         </div>
+                        @if(!empty($item->aviso_entrega))
+                        <div class="sm:col-span-2">
+                            <p class="text-gray-500 text-xs uppercase tracking-wide mb-1">Aviso de entrega</p>
+                            <p class="text-amber-300 font-semibold">⚠ {{ $item->aviso_entrega }}</p>
+                        </div>
+                        @endif
                     </div>
                 </section>
 
@@ -396,8 +408,14 @@
                                 <i data-lucide="pencil" class="size-4"></i> Editar
                             </a>
                         @endif
-                        <a href="{{ route('vendas.print', $item->id) }}" class="inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-4 py-3 text-sm font-medium text-indigo-200 shadow-md transition hover:bg-indigo-500/20 hover:border-indigo-400/60">
-                            <i data-lucide="printer" class="size-4"></i> Imprimir
+                        <a href="{{ route('vendas.print', ['id' => $item->id, 'download' => 1]) }}" class="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-500/40 bg-sky-500/10 px-4 py-3 text-sm font-medium text-sky-200 shadow-md transition hover:bg-sky-500/20 hover:border-sky-400/60">
+                            <i data-lucide="download" class="size-4"></i> Baixar pedido (PDF)
+                        </a>
+                        @php $podeFichaShow = in_array($item->status_pedido, ['confirmado', 'em_separacao', 'separado', 'alteracao_pendente', 'em_rota_entrega', 'entregue'], true); @endphp
+                        <a href="{{ $podeFichaShow ? route('vendas.print-ficha', $item->id) : '#' }}"
+                            target="{{ $podeFichaShow ? '_blank' : '_self' }}"
+                            class="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-200 shadow-md transition hover:bg-amber-500/20 hover:border-amber-400/60 {{ !$podeFichaShow ? 'opacity-40 pointer-events-none' : '' }}">
+                            <i data-lucide="printer" class="size-4"></i> Ficha de separação
                         </a>
                     </div>
                 </div>

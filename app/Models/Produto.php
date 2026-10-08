@@ -18,6 +18,8 @@ class Produto extends Model
 		'categoria_id',
 		'cor',
 		'valor_venda',
+		'preco_2',
+		'preco_3',
 		'NCM',
 		'CST_CSOSN',
 		'CST_PIS',
@@ -640,7 +642,7 @@ class Produto extends Model
 {
 	$valor = 0;
 	$linkId = null;
-	$quantidade = isset($objeto->quantidade_mov) ? (float) $objeto->quantidade_mov : (float) $objeto->quantidade;
+	$quantidade = (float) $objeto->quantidade;
 
 	if ($tipo == 'Compras') {
 		$valor = $objeto->valor_unitario;
@@ -684,8 +686,8 @@ class Produto extends Model
 		$row['alteracao_tipo_codigo'] = $objeto->tipo;
 		if (in_array((string) ($objeto->acao ?? ''), ['edicao_venda_estorno', 'edicao_venda_saida'], true)) {
 			$row['tipo'] = $objeto->acao === 'edicao_venda_estorno'
-				? 'Estorno (edição venda)'
-				: 'Ajuste venda (+)';
+				? 'Edição venda (estorno)'
+				: 'Edição venda (saída)';
 			$row['valor'] = $this->resolverValorMovimentoEdicaoVenda($objeto);
 		} elseif ((string) ($objeto->acao ?? '') === 'venda_exclusao_estorno') {
 			$row['tipo'] = 'Exclusão venda';
@@ -925,7 +927,7 @@ class Produto extends Model
 			}
 			$sumQ = (float) $itens->sum(fn ($i) => (float) $i->quantidade);
 			$adj = $mapAjustePorVenda[$vid] ?? null;
-			if ($sumQ < 0.00001 && $adj === null) {
+			if ($sumQ < 0.00001) {
 				continue;
 			}
 			/** @var ItemVenda $rep */
@@ -950,14 +952,21 @@ class Produto extends Model
 				$somaValQ = (float) $itens->sum(fn ($i) => (float) $i->quantidade * (float) $i->valor);
 				$clone->valor = $somaValQ / $sumQ;
 			}
+			$deltaEstoque = $sumQ;
 			if ($adj !== null) {
-				$clone->quantidade_mov = $sumQ + (float) $adj['estorno'] - (float) $adj['saida'];
+				$deltaEstoque = $sumQ + (float) $adj['estorno'] - (float) $adj['saida'];
 			}
 			if ($rep->relationLoaded('venda')) {
 				$clone->setRelation('venda', $rep->getRelation('venda'));
 			}
 
 			$temp = $this->criaArray($clone, 'Vendas');
+			$temp['delta_estoque'] = $deltaEstoque;
+			$temp['quantidade_pedido'] = $sumQ;
+			if ($adj !== null) {
+				$temp['qtd_ajuste_saida'] = (float) $adj['saida'];
+				$temp['qtd_ajuste_estorno'] = (float) $adj['estorno'];
+			}
 			array_push($arr, $temp);
 		}
 
@@ -1010,7 +1019,6 @@ class Produto extends Model
 		$balance = (float) DB::table('estoques')->where('produto_id', $this->id)->sum('quantidade');
 
 		foreach ($movDesc as &$row) {
-			$q = abs((float)($row['quantidade'] ?? 0));
 			$linhas = [];
 			$tm = $row['tipo_model'] ?? '';
 
@@ -1025,7 +1033,13 @@ class Produto extends Model
 					$ea = $row['estoque_anterior'];
 					$en = $row['estoque_novo'];
 					if ($ea !== null && $en !== null && $ea !== '' && $en !== '') {
-						$balance = (float) $ea;
+						$qEst = abs((float) ($row['quantidade'] ?? 0));
+						if ($acaoAlt === 'venda_exclusao_estorno') {
+							// Compensa a venda removida do histórico (item_venda apagado na exclusão).
+							$balance = (float) $ea + $qEst;
+						} else {
+							$balance = (float) $ea;
+						}
 					}
 					continue;
 				}
@@ -1034,6 +1048,7 @@ class Produto extends Model
 				if ($ea !== null && $en !== null && $ea !== '' && $en !== '') {
 					$antes = (float) $ea;
 					$depois = (float) $en;
+					$q = abs((float)($row['quantidade'] ?? 0));
 					$linhas[] = 'Estoque anterior: ' . $this->fmtQtdMov($antes) . ' un.';
 					if (!empty($row['observacao'])) {
 						$linhas[] = trim((string) $row['observacao']);
@@ -1049,36 +1064,65 @@ class Produto extends Model
 					}
 					$linhas[] = 'Novo estoque: ' . $this->fmtQtdMov($depois) . ' un.';
 					$balance = $antes;
+					$row['linhas_detalhe'] = $linhas;
+					continue;
+				}
+				$q = abs((float)($row['quantidade'] ?? 0));
+				$cod = $row['alteracao_tipo_codigo'] ?? null;
+				$novo = $balance;
+				if ($cod == 1 || $cod === '1' || $cod === 'entrada') {
+					$antes = $balance - $q;
+					$linhas[] = 'Estoque anterior: ' . $this->fmtQtdMov($antes) . ' un.';
+					$linhas[] = 'Entrada manual: ' . $this->fmtQtdMov($q) . ' un.';
+					$linhas[] = 'Novo estoque: ' . $this->fmtQtdMov($novo) . ' un.';
+					$balance = $antes;
 				} else {
-					$cod = $row['alteracao_tipo_codigo'] ?? null;
-					$novo = $balance;
-					if ($cod == 1 || $cod === '1' || $cod === 'entrada') {
-						$antes = $balance - $q;
-						$linhas[] = 'Estoque anterior: ' . $this->fmtQtdMov($antes) . ' un.';
-						$linhas[] = 'Entrada manual: ' . $this->fmtQtdMov($q) . ' un.';
-						$linhas[] = 'Novo estoque: ' . $this->fmtQtdMov($novo) . ' un.';
-						$balance = $antes;
-					} else {
-						$antes = $balance + $q;
-						$linhas[] = 'Estoque anterior: ' . $this->fmtQtdMov($antes) . ' un.';
-						$linhas[] = 'Saída manual: ' . $this->fmtQtdMov($q) . ' un.';
-						$linhas[] = 'Novo estoque: ' . $this->fmtQtdMov($novo) . ' un.';
-						$balance = $antes;
-					}
-					if (!empty($row['observacao'])) {
-						array_unshift($linhas, trim((string) $row['observacao']));
-					}
+					$antes = $balance + $q;
+					$linhas[] = 'Estoque anterior: ' . $this->fmtQtdMov($antes) . ' un.';
+					$linhas[] = 'Saída manual: ' . $this->fmtQtdMov($q) . ' un.';
+					$linhas[] = 'Novo estoque: ' . $this->fmtQtdMov($novo) . ' un.';
+					$balance = $antes;
+				}
+				if (!empty($row['observacao'])) {
+					array_unshift($linhas, trim((string) $row['observacao']));
 				}
 				$row['linhas_detalhe'] = $linhas;
 				continue;
 			}
 
 			if ($tm === 'Vendas') {
+				$qPedido = abs((float) ($row['quantidade_pedido'] ?? $row['quantidade'] ?? 0));
+				$delta = (float) ($row['delta_estoque'] ?? $row['quantidade'] ?? 0);
+				$ajSaida = (float) ($row['qtd_ajuste_saida'] ?? 0);
+				$ajEstorno = (float) ($row['qtd_ajuste_estorno'] ?? 0);
+				$teveEdicao = $ajSaida > 0.00001 || $ajEstorno > 0.00001;
+
+				if (abs($delta) < 0.00001) {
+					$row['quantidade'] = 0;
+					$linhas[] = 'Qtd no pedido: ' . $this->fmtQtdMov($qPedido) . ' un.';
+					$linhas[] = 'Saída de estoque registrada na edição do pedido (ver linha "Edição venda").';
+					$row['linhas_detalhe'] = $linhas;
+					continue;
+				}
+
+				$q = abs($delta);
+				$row['quantidade'] = $q;
 				$novo = $balance;
 				$antes = $balance + $q;
 				$vid = $row['venda_id'] ?? $row['id'];
 				$linhas[] = 'Estoque anterior: ' . $this->fmtQtdMov($antes) . ' un.';
-				$linhas[] = 'Saída por venda nº ' . $vid . ' — ' . $this->fmtQtdMov($q) . ' un.';
+				$linhas[] = 'Saída inicial na venda nº ' . $vid . ' — ' . $this->fmtQtdMov($q) . ' un.';
+				if ($teveEdicao) {
+					$partes = [];
+					if ($ajSaida > 0.00001) {
+						$partes[] = '+' . $this->fmtQtdMov($ajSaida) . ' na edição';
+					}
+					if ($ajEstorno > 0.00001) {
+						$partes[] = '-' . $this->fmtQtdMov($ajEstorno) . ' estornado na edição';
+					}
+					$linhas[] = 'Total no pedido: ' . $this->fmtQtdMov($qPedido) . ' un.'
+						. ($partes ? ' (' . implode(', ', $partes) . ')' : '');
+				}
 				if (!empty($row['cliente_venda'])) {
 					$linhas[] = 'Cliente: ' . $row['cliente_venda'] . '.';
 				}
@@ -1089,6 +1133,7 @@ class Produto extends Model
 			}
 
 			if ($tm === 'PDV') {
+				$q = abs((float) ($row['quantidade'] ?? 0));
 				$novo = $balance;
 				$antes = $balance + $q;
 				$pid = $row['pdv_id'] ?? $row['id'];
@@ -1101,6 +1146,7 @@ class Produto extends Model
 			}
 
 			if ($tm === 'Compras') {
+				$q = abs((float) ($row['quantidade'] ?? 0));
 				$novo = $balance;
 				$antes = $balance - $q;
 				$cid = $row['compra_id'] ?? $row['id'];
@@ -1147,5 +1193,34 @@ class Produto extends Model
 		}
 
 		return (float) ($this->valor_venda ?? 0);
+	}
+
+	/**
+	 * Recalcula preços de venda quando o custo muda (reajuste automático).
+	 */
+	public function aplicarReajusteAutomatico(?float $custoAnterior = null): void
+	{
+		if (!(bool) $this->reajuste_automatico) {
+			return;
+		}
+
+		$custo = (float) $this->valor_compra;
+		if ($custo <= 0) {
+			return;
+		}
+
+		$this->valor_venda = __preco_com_lucro($custo, (float) $this->percentual_lucro);
+
+		$baseAnterior = $custoAnterior !== null && $custoAnterior > 0 ? $custoAnterior : $custo;
+
+		if ($this->preco_2 !== null && $baseAnterior > 0) {
+			$perc = __percentual_lucro($baseAnterior, (float) $this->preco_2);
+			$this->preco_2 = __preco_com_lucro($custo, $perc);
+		}
+
+		if ($this->preco_3 !== null && $baseAnterior > 0) {
+			$perc = __percentual_lucro($baseAnterior, (float) $this->preco_3);
+			$this->preco_3 = __preco_com_lucro($custo, $perc);
+		}
 	}
 }

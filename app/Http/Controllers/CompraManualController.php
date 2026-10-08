@@ -93,11 +93,9 @@ class CompraManualController extends Controller
                         'valor_unitario' => __convert_value_bd($request->valor_unitario[$i]),
                         'unidade_compra' => $product->unidade_compra,
                     ]);
+                    $custoAnterior = (float) $product->valor_compra;
                     $product->valor_compra = __convert_value_bd($request->valor_unitario[$i]);
-                    if ($product->reajuste_automatico) {
-                        $product->valor_venda = $product->valor_compra +
-                            (($product->valor_compra * $product->percentual_lucro) / 100);
-                    }
+                    $product->aplicarReajusteAutomatico($custoAnterior);
                     $product->save();
                     $stockMove->pluStock(
                         $product->id,
@@ -171,11 +169,9 @@ class CompraManualController extends Controller
                         'valor_unitario' => __convert_value_bd($request->valor_unitario[$i]),
                         'unidade_compra' => $product->unidade_compra,
                     ]);
+                    $custoAnterior = (float) $product->valor_compra;
                     $product->valor_compra = __convert_value_bd($request->valor_unitario[$i]);
-                    if ($product->reajuste_automatico) {
-                        $product->valor_venda = $product->valor_compra +
-                            (($product->valor_compra * $product->percentual_lucro) / 100);
-                    }
+                    $product->aplicarReajusteAutomatico($custoAnterior);
                     $product->save();
                     $stockMove->pluStock(
                         $product->id,

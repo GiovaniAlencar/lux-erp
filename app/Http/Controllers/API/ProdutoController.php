@@ -113,11 +113,21 @@ class ProdutoController extends Controller
     {
         $filial_id = $request->filial_id ?? null;
 
-        $data = Produto::orderBy('nome', 'desc')
+        $data = Produto::orderBy('nome', 'asc')
         ->select('produtos.*')
-            // ->join('estoques', 'produto_id', '=', 'estoques.produto_id')
         ->where('produtos.empresa_id', $request->empresa_id)
-        ->where('produtos.nome', 'like', "%$request->pesquisa%")
+        ->where('produtos.inativo', 0)
+        ->when(filled($request->pesquisa), function ($q) use ($request) {
+            $termo = trim((string) $request->pesquisa);
+            if (is_numeric($termo)) {
+                $q->where(function ($w) use ($termo) {
+                    $w->where('produtos.id', (int) $termo)
+                        ->orWhere('produtos.nome', 'like', "%{$termo}%");
+                });
+            } else {
+                $q->where('produtos.nome', 'like', "%{$termo}%");
+            }
+        })
         ->with('estoque')
         ->get();
         $permissaoAcesso = __getLocaisUsarioLogado($request->usuario_id);
@@ -140,9 +150,18 @@ class ProdutoController extends Controller
 
     public function find($id)
     {
-        $item = Produto::with('estoque')
+        $item = Produto::with(['estoque', 'categoria:id,nome'])
         ->where('id', $id)
+        ->where('inativo', 0)
         ->first();
+
+        if ($item) {
+            $item->grupo_preco = \App\Helpers\PrecoCategoriaVenda::grupoPorCategoriaId((int) $item->categoria_id);
+            $item->preco_normal = (float) ($item->valor_venda ?? 0);
+            $item->preco_atacado_1 = $item->preco_2 !== null ? (float) $item->preco_2 : $item->preco_normal;
+            $item->preco_atacado_2 = $item->preco_3 !== null ? (float) $item->preco_3 : $item->preco_atacado_1;
+        }
+
         return response()->json($item, 200);
     }
 
@@ -151,6 +170,7 @@ class ProdutoController extends Controller
         $item = Produto::with('estoque')
         ->where('codBarras', $request->barcode)
         ->where('empresa_id', $request->empresa_id)
+        ->where('inativo', 0)
         ->first();
         return response()->json($item, 200);
     }
@@ -171,6 +191,7 @@ class ProdutoController extends Controller
         $item = Produto::with('estoque')
         ->where('referencia_balanca', $ref)
         ->where('empresa_id', $request->empresa_id)
+        ->where('inativo', 0)
         ->first();
 
         if ($item->unidade_venda == 'KG') {

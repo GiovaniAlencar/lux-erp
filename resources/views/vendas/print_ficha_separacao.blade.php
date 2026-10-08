@@ -1,10 +1,20 @@
 {{--
     Ficha de separação: itens agrupados por categoria do produto (cadastro).
     Checkboxes são quadrados para marcação manual na impressão (quantidade conferida / item OK).
+    No topo: guia para destacar (cliente, pedidos, telefone, endereço, embalagem, avisos).
 --}}
 @php
     $qtdDec = 2;
     $itens = $item->itens;
+    $cliente = $item->cliente;
+    $telefone = $cliente ? trim(($cliente->celular ?? '') ?: ($cliente->telefone ?? '')) : '';
+    $rua = $cliente ? trim($cliente->rua ?? '') : '';
+    $numero = $cliente ? trim($cliente->numero ?? '') : '';
+    $bairro = $cliente ? trim($cliente->bairro ?? '') : '';
+    $complemento = $cliente ? trim($cliente->complemento ?? '') : '';
+    $enderecoLinha = trim($rua . ($numero !== '' ? ', ' . $numero : ''));
+    $avisoGuia = trim($item->aviso_entrega ?? '');
+
     $porCategoria = $itens->groupBy(function ($linha) {
         $p = $linha->produto;
         if (!$p) {
@@ -31,14 +41,78 @@
     });
 @endphp
 
+{{-- Guia para destacar / colar na embalagem --}}
+<div class="ficha-guia">
+    <div class="ficha-guia-titulo">GUIA PARA DESTACAR</div>
+    <table class="ficha-guia-meta">
+        <tr>
+            <td class="ficha-guia-label">Cliente</td>
+            <td class="ficha-guia-valor"><strong>{{ optional($cliente)->razao_social ?? '—' }}</strong></td>
+        </tr>
+        <tr>
+            <td class="ficha-guia-label">Pedido</td>
+            <td class="ficha-guia-valor"><strong>#{{ $item->id }}</strong></td>
+        </tr>
+        <tr>
+            <td class="ficha-guia-label">Telefone</td>
+            <td class="ficha-guia-valor">{{ $telefone !== '' ? $telefone : '—' }}</td>
+        </tr>
+        <tr>
+            <td class="ficha-guia-label">Endereço</td>
+            <td class="ficha-guia-valor">{{ $enderecoLinha !== '' ? $enderecoLinha : '—' }}</td>
+        </tr>
+        <tr>
+            <td class="ficha-guia-label">Bairro</td>
+            <td class="ficha-guia-valor"><strong>{{ $bairro !== '' ? $bairro : '—' }}</strong></td>
+        </tr>
+        @if($complemento !== '')
+        <tr>
+            <td class="ficha-guia-label">Complemento</td>
+            <td class="ficha-guia-valor">{{ $complemento }}</td>
+        </tr>
+        @endif
+    </table>
+
+    <table class="ficha-guia-embalagem">
+        <tr>
+            <td class="ficha-guia-box">
+                <span class="chk-box" aria-hidden="true"></span> Sacola
+                &nbsp;&nbsp; Qtd: ________
+            </td>
+            <td class="ficha-guia-box">
+                <span class="chk-box" aria-hidden="true"></span> Caixa
+                &nbsp;&nbsp; Qtd: ________
+            </td>
+        </tr>
+    </table>
+
+    @if($avisoGuia !== '')
+    <div class="ficha-guia-aviso">⚠ AVISO: {{ $avisoGuia }}</div>
+    @else
+    <div class="ficha-guia-aviso-vazio">Aviso / lembrete: _______________________________________________</div>
+    @endif
+
+    <div class="ficha-guia-corte">— destaque esta parte e fixe na embalagem —</div>
+</div>
+
 <div class="ficha-separacao">
     <h1 class="ficha-titulo">Ficha de separação</h1>
-    <p class="ficha-subtitulo">Pedido #{{ $item->id }} — {{ optional($item->cliente)->razao_social ?? 'Cliente' }}</p>
+    <p class="ficha-subtitulo">Pedido #{{ $item->id }} · v{{ $versaoFicha ?? ($item->versao_pedido ?? 1) }} — {{ optional($item->cliente)->razao_social ?? 'Cliente' }}</p>
 
     <table class="ficha-meta">
         <tr>
             <td><strong>Impresso em:</strong> {{ now()->format('d/m/Y H:i') }}</td>
         </tr>
+        @if(!empty($item->observacao))
+        <tr>
+            <td><strong>Observação:</strong> {{ $item->observacao }}</td>
+        </tr>
+        @endif
+        @if($avisoGuia !== '')
+        <tr>
+            <td><strong>Aviso de entrega:</strong> {{ $avisoGuia }}</td>
+        </tr>
+        @endif
     </table>
 
     <p class="ficha-instrucao">

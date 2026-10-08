@@ -50,6 +50,7 @@
 								<thead class="">
 									<tr>
 										<th></th>
+										<th>ID</th>
 										<th>Razão social</th>
 										<th>CPF/CNPJ</th>
 										<th>Data de cadastro</th>
@@ -63,6 +64,7 @@
 									@forelse($data as $item)
 									<tr>
 										<td><img class="img-round" src="{{ $item->img }}"></td>
+										<td>{{ $item->id }}</td>
 										<td>{{ $item->razao_social }}</td>
 										<td>{{ $item->cpf_cnpj }}</td>
 										<td>{{ __data_pt($item->created_at) }}</td>
@@ -86,7 +88,7 @@
 									</tr>
 									@empty
 									<tr>
-										<td colspan="8" class="text-center">Nada encontrado</td>
+										<td colspan="9" class="text-center">Nada encontrado</td>
 									</tr>
 									@endforelse
 								</tbody>

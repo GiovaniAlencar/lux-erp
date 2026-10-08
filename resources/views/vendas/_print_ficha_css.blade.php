@@ -1,4 +1,71 @@
 {{-- Estilos da ficha de separação (Dompdf + impressão) --}}
+		.ficha-guia {
+			border: 2px dashed #222;
+			padding: 12px 14px;
+			margin: 0 0 22px 0;
+			background: #fff;
+		}
+		.ficha-guia-titulo {
+			font-size: 14px;
+			font-weight: bold;
+			letter-spacing: .04em;
+			margin: 0 0 10px 0;
+			text-align: center;
+		}
+		.ficha-guia-meta {
+			width: 100%;
+			border-collapse: collapse;
+			margin-bottom: 10px;
+		}
+		.ficha-guia-meta td {
+			padding: 3px 0;
+			border: none;
+			background: transparent;
+			font-size: 13px;
+			vertical-align: top;
+		}
+		.ficha-guia-label {
+			width: 95px;
+			color: #555;
+		}
+		.ficha-guia-valor {
+			color: #111;
+		}
+		.ficha-guia-embalagem {
+			width: 100%;
+			border-collapse: collapse;
+			margin: 8px 0 10px 0;
+		}
+		.ficha-guia-embalagem td {
+			border: none;
+			background: transparent;
+			padding: 0 8px 0 0;
+			font-size: 13px;
+		}
+		.ficha-guia-box {
+			border: 1px solid #333 !important;
+			padding: 8px 10px !important;
+			width: 48%;
+		}
+		.ficha-guia-aviso {
+			border: 1px solid #b45309;
+			background: #fffbeb;
+			padding: 6px 8px;
+			font-size: 12px;
+			font-weight: bold;
+			margin-bottom: 8px;
+		}
+		.ficha-guia-aviso-vazio {
+			font-size: 12px;
+			color: #444;
+			margin-bottom: 8px;
+		}
+		.ficha-guia-corte {
+			text-align: center;
+			font-size: 10px;
+			color: #666;
+			margin-top: 4px;
+		}
 		.ficha-separacao {
 			font-size: 13px;
 			color: #222;

@@ -158,13 +158,23 @@ class ProdutoGrade
 
 	private function salvarProdutoEcommerce($request, $produto, $file_name)
     {
-        $categoriaFirst =  CategoriaProdutoEcommerce::where('empresa_id', $request->empresa_id)
-            ->first();
+        $categoriaId = (int) ($request->categoria_ecommerce_id ?? $request->ecommerce_categoria_id ?? 0);
+        if ($categoriaId <= 0 && $produto->ecommerce) {
+            $categoriaId = (int) $produto->ecommerce->categoria_id;
+        }
+        $categoriaFirst = CategoriaProdutoEcommerce::where('empresa_id', $request->empresa_id)->first();
+        if ($categoriaId <= 0 && $categoriaFirst) {
+            $categoriaId = (int) $categoriaFirst->id;
+        }
+        if ($categoriaId <= 0) {
+            return;
+        }
+
         $produtoEcommerce = [
             'produto_id' => $produto->id,
-            'categoria_id' => $request->categoria_ecommerce_id ? $request->categoria_ecommerce_id : $categoriaFirst->id,
+            'categoria_id' => $categoriaId,
             'empresa_id' => $request->empresa_id,
-            'descricao' => $request->descricao ?? '',
+            'descricao' => $request->descricao ?? ($produto->ecommerce?->descricao ?? ''),
             'controlar_estoque' => $request->input('ecommerce_controlar_estoque') ? true : false,
             'status' => $request->input('status') ? true : false,
             'valor' => $request->valor_ecommerce ? __convert_value_bd($request->valor_ecommerce) : __convert_value_bd($request->valor_venda),

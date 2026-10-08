@@ -14,15 +14,20 @@ class Venda extends Model
         'cliente_id', 'usuario_id', 'frete_id', 'valor_total', 'forma_pagamento', 'numero_nfe',
         'natureza_id', 'chave', 'estado_emissao', 'observacao', 'desconto',
         'transportadora_id', 'sequencia_cce', 'tipo_pagamento', 'empresa_id',
-        'pedido_ecommerce_id', 'bandeira_cartao', 'cnpj_cartao', 'cAut_cartao',
+        'pedido_ecommerce_id', 'origem', 'bandeira_cartao', 'cnpj_cartao', 'cAut_cartao',
         'descricao_pag_outros', 'acrescimo', 'frete', 'data_entrega', 'pedido_nuvemshop_id',
         'nSerie', 'data_emissao', 'filial_id', 'status_pedido', 'status_pagamento',
+        'modo_preco_arabes', 'modo_preco_miniaturas', 'aviso_entrega',
+        'versao_pedido', 'versao_ficha_impressa', 'versao_pedido_pdf',
+        'ficha_impressa_em', 'pedido_pdf_em',
         'fechada_caixa', 'fechada_em', 'fechada_por_usuario_id'
     ];
 
     protected $casts = [
         'fechada_caixa' => 'boolean',
         'fechada_em' => 'datetime',
+        'ficha_impressa_em' => 'datetime',
+        'pedido_pdf_em' => 'datetime',
     ];
 
     public function filial(){

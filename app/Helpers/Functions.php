@@ -70,3 +70,17 @@ function erroFull($e){
 	];
 }
 
+function __preco_com_lucro(float $custo, float $percentual): float
+{
+	return round($custo + ($custo * $percentual / 100), 2);
+}
+
+function __percentual_lucro(float $custo, float $preco): float
+{
+	if ($custo <= 0) {
+		return 0.0;
+	}
+
+	return round((($preco - $custo) / $custo) * 100, 2);
+}
+

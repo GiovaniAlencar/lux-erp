@@ -115,7 +115,7 @@
 				@endif
 
 				<td style="width: 400px;">
-					<center><label class="titulo">PEDIDO DE VENDA #{{ $item->id }}</label></center>
+					<center><label class="titulo">PEDIDO DE VENDA #{{ $item->id }} · v{{ $item->versao_pedido ?? 1 }}</label></center>
 				</td>
 			</tr>
 		</table>
@@ -198,7 +198,9 @@
 	<table>
 		<tr>
 			<td class="b-top b-bottom center-text"><strong>Quantidade Total: {{$somaItens}}</strong></td>
-			<td class="b-top b-bottom center-text"><strong>Valor Total dos Itens: {{number_format($somaTotalItens, $casasDecimais, ',', '.')}}</strong></td>
+			<td class="b-top b-bottom center-text">
+    <strong>Subtotal dos Produtos: R$ {{number_format($somaTotalItens, $casasDecimais, ',', '.')}}</strong>
+</td>
 		</tr>
 	</table>
 
@@ -246,43 +248,45 @@
 			</td>
 		</tr>
 	</table>
+	<table style="margin-top: 15px;">
+    <tr>
+        <td style="width: 25%;">
+            Desconto (-):
+            <strong>
+                R$ {{number_format($item->desconto, 2, ',', '.')}}
+            </strong>
+        </td>
 
-	<table>
-		<tr>
-			<td class="">
-				Desconto (-):
-				<strong>
-					{{number_format($item->desconto, 2, ',', '.')}}
-				</strong>
-			</td>
+        <td style="width: 25%;">
+            Acréscimo (+):
+            <strong>
+                R$ {{number_format($item->acrescimo, 2, ',', '.')}}
+            </strong>
+        </td>
 
-			<td class="">
-				Acrescimo (+):
-				<strong>
-					{{number_format($item->acrescimo, 2, ',', '.')}}
-				</strong>
-			</td>
+        <td style="width: 25%;">
+            Frete (+):
+            <strong>
+                R$ {{number_format($item->frete ?? 0, 2, ',', '.')}}
+            </strong>
+        </td>
 
-			<td class="">
-				Frete (+):
-				<strong>
-					@if($item->frete)
-					{{number_format($item->frete, 2, ',', '.')}}
-					@else
-					0,00
-					@endif
-				</strong>
-			</td>
-
-			<td class="">
-				Valor Líquido:
-				<strong>
-					{{number_format($item->valor_total - $item->desconto + $item->acrescimo + $item->frete, $casasDecimais, ',', '.')}}
-				</strong>
-			</td>
-
-		</tr>
-	</table>
+        <td style="width: 25%; background-color: #f2f2f2; border: 2px solid #333;">
+            <strong style="font-size: 16px;">
+                TOTAL A PAGAR:
+                R$ {{number_format(
+                    $item->valor_total
+                    - $item->desconto
+                    + $item->acrescimo
+                    + ($item->frete ?? 0),
+                    $casasDecimais,
+                    ',',
+                    '.'
+                )}}
+            </strong>
+        </td>
+    </tr>
+</table>
 
 	@if($item->observacao != "" || $config->campo_obs_pedido != "")
 	<table>
@@ -317,10 +321,6 @@
 			</td>
 		</tr>
 	</table>
-
-	{{-- Ficha de separação: agrupada por categoria; quadrados para conferência na impressão --}}
-	<div class="page_break"></div>
-	@include('vendas.print_ficha_separacao')
 
 	@if($tipoDimensao)
 	<div class="page_break"></div>
