@@ -343,9 +343,6 @@
     <div class="flex flex-col flex-1 min-h-0 px-3 py-2 rounded-b-2xl @if(!$vendasUiDark) bg-white @endif">
         <div class="shrink-0 flex flex-col gap-1 lg:flex-row lg:items-center lg:justify-between mb-2">
             <h2 class="text-sm font-semibold tracking-tight @if($vendasUiDark) text-gray-100 @else text-gray-900 @endif mb-0">Lista de vendas</h2>
-            @if(!empty($periodoPadraoAplicado))
-            <span class="text-[11px] @if($vendasUiDark) text-gray-400 @else text-gray-500 @endif">Mostrando os pedidos de hoje · seus pedidos primeiro, depois pendentes. Para ver mais, ajuste a data inicial no filtro.</span>
-            @endif
         </div>
 
 
