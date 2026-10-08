@@ -343,6 +343,9 @@
     <div class="flex flex-col flex-1 min-h-0 px-3 py-2 rounded-b-2xl @if(!$vendasUiDark) bg-white @endif">
         <div class="shrink-0 flex flex-col gap-1 lg:flex-row lg:items-center lg:justify-between mb-2">
             <h2 class="text-sm font-semibold tracking-tight @if($vendasUiDark) text-gray-100 @else text-gray-900 @endif mb-0">Lista de vendas</h2>
+            @if(!empty($periodoPadraoAplicado))
+            <span class="text-[11px] @if($vendasUiDark) text-gray-400 @else text-gray-500 @endif">Mostrando os últimos 3 dias · pendentes primeiro. Para ver mais, ajuste a data inicial no filtro.</span>
+            @endif
         </div>
 
 
@@ -446,6 +449,9 @@
                                             data-copy="{{ e($item->cliente->razao_social) }}"
                                             title="Clique para copiar o nome (texto simples, ideal para Excel)">{{ $item->cliente->razao_social }}</span>
                                     </div>
+                                    <div class="text-[11px] leading-snug mt-0.5 @if($vendasUiDark) text-gray-500 @else text-gray-500 @endif" title="Vendedor">
+                                        <i data-lucide="user" class="size-3 inline -mt-0.5"></i> {{ optional($item->usuario)->nome ?? '—' }}
+                                    </div>
                                 </td>
                                 <td class="px-2 py-2.5 align-middle">
                                     @php
@@ -472,14 +478,14 @@
                                     @endphp
                                     @if($divFiscal['tem_fiscal'] || $nfBadge)
                                     <div class="text-xs leading-snug mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 tabular-nums" title="Cobrar em duas contas: {{ config('lux.conta_fiscal') }} / {{ config('lux.conta_nao_fiscal') }}">
-                                        <span class="font-semibold @if($vendasUiDark) text-indigo-300 @else text-indigo-700 @endif"><span class="inline-block rounded px-1 text-[10px] font-bold bg-indigo-600 text-white">F</span> R$ {{ __moeda($divFiscal['fiscal']) }} @include('vendas.partials.pix_btn', ['conta' => 'fiscal', 'valor' => $divFiscal['fiscal'], 'txid' => 'LUX' . $item->id . 'F'])</span>
-                                        <span class="font-semibold @if($vendasUiDark) text-gray-300 @else text-gray-700 @endif"><span class="inline-block rounded px-1 text-[10px] font-bold bg-gray-500 text-white">2</span> R$ {{ __moeda($divFiscal['nao_fiscal']) }} @include('vendas.partials.pix_btn', ['conta' => 'nao_fiscal', 'valor' => $divFiscal['nao_fiscal'], 'txid' => 'LUX' . $item->id . 'N'])</span>
+                                        <span class="font-semibold @if($vendasUiDark) text-indigo-300 @else text-indigo-700 @endif"><span class="inline-block rounded px-1 text-[10px] font-bold bg-indigo-600 text-white">F</span> R$ {{ __moeda($divFiscal['fiscal']) }} @include('vendas.partials.pix_btn', ['pago' => ($stPag === 'pago'), 'conta' => 'fiscal', 'valor' => $divFiscal['fiscal'], 'txid' => 'LUX' . $item->id . 'F'])</span>
+                                        <span class="font-semibold @if($vendasUiDark) text-gray-300 @else text-gray-700 @endif"><span class="inline-block rounded px-1 text-[10px] font-bold bg-gray-500 text-white">2</span> R$ {{ __moeda($divFiscal['nao_fiscal']) }} @include('vendas.partials.pix_btn', ['pago' => ($stPag === 'pago'), 'conta' => 'nao_fiscal', 'valor' => $divFiscal['nao_fiscal'], 'txid' => 'LUX' . $item->id . 'N'])</span>
                                         @if($nfBadge)
                                         <a href="{{ route('vendas.show', $item->id) }}#nf-externa" class="inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold no-underline {{ $nfBadge[1] }}" title="Controle da NF-e fiscal (abrir pedido)">{{ $nfBadge[0] }}</a>
                                         @endif
                                     </div>
                                     @elseif($divFiscal['total'] > 0)
-                                    <div class="text-xs leading-snug mt-1">@include('vendas.partials.pix_btn', ['conta' => 'nao_fiscal', 'valor' => $divFiscal['total'], 'txid' => 'LUX' . $item->id . 'N'])</div>
+                                    <div class="text-xs leading-snug mt-1">@include('vendas.partials.pix_btn', ['pago' => ($stPag === 'pago'), 'conta' => 'nao_fiscal', 'valor' => $divFiscal['total'], 'txid' => 'LUX' . $item->id . 'N'])</div>
                                     @endif
                                 </td>
                                 <td class="px-2 py-2.5 align-middle">

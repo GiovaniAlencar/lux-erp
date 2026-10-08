@@ -77,7 +77,7 @@
         [['fiscal', vf, 'F'], ['nao_fiscal', vnf, 'N']].forEach(function (x) {
             var b = box.querySelector('.lux-pix-live[data-conta="' + x[0] + '"]');
             if (!b || !window.luxPix) return;
-            var code = window.luxPix.gerar(x[0], x[1], txBase !== 'LUX' ? txBase + x[2] : '');
+            var code = {{ (isset($item) && ($item->status_pagamento ?? '') === 'pago') ? 'true' : 'false' }} ? null : window.luxPix.gerar(x[0], x[1], txBase !== 'LUX' ? txBase + x[2] : '');
             b.classList.toggle('d-none', !code);
             if (code) b.setAttribute('data-pix', code);
         });

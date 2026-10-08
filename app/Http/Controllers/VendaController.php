@@ -83,6 +83,19 @@ class VendaController extends Controller
         $filter_status_pagamento = $request->get('filter_status_pagamento');
         $usuarioAdm = (bool) optional(Usuario::find(get_id_user()))->adm;
         $filter_somente_abertos = $usuarioAdm && $request->boolean('filter_somente_abertos');
+        // Sem filtro de data/cliente: mostra só os últimos 3 dias (lista carrega bem mais rápido).
+        $periodoPadraoAplicado = false;
+        if (empty($start_date) && empty($end_date) && empty($cliente_id) && empty($data_emissao)) {
+            $start_date = now()->subDays(3)->format('Y-m-d');
+            $pesquisa_data = $pesquisa_data ?: 'created_at';
+            $periodoPadraoAplicado = true;
+            // preenche os campos do filtro na tela
+            $request->merge(['start_date' => $start_date, 'pesquisa_data' => $pesquisa_data]);
+        }
+        if (!in_array($pesquisa_data, ['created_at', 'data_entrega'], true)) {
+            $pesquisa_data = 'created_at';
+        }
+
         $local_padrao = __get_local_padrao();
         if (!$filial_id && $local_padrao) {
             $filial_id = $local_padrao;
@@ -156,8 +169,21 @@ class VendaController extends Controller
                 return $query->where('filial_id', $filial_id);
             });
 
+        // Pendentes primeiro; concluídos (entregue/cancelada) no fim. Dentro de cada grupo, mais recentes primeiro.
         $data = (clone $queryVendas)
-            ->with('itens')
+            ->with(['itens', 'cliente:id,razao_social,cpf_cnpj', 'usuario:id,nome'])
+            ->orderByRaw("CASE COALESCE(status_pedido, 'aguardando_confirmacao')
+                WHEN 'alteracao_pendente' THEN 0
+                WHEN 'aguardando_confirmacao' THEN 1
+                WHEN 'em_elaboracao' THEN 1
+                WHEN 'confirmado' THEN 2
+                WHEN 'em_separacao' THEN 3
+                WHEN 'separado' THEN 4
+                WHEN 'ocorrencia_entrega' THEN 5
+                WHEN 'em_rota_entrega' THEN 6
+                WHEN 'entregue' THEN 8
+                WHEN 'cancelada' THEN 9
+                ELSE 7 END")
             ->orderBy('created_at', 'desc')
             ->paginate(env("PAGINACAO"));
 
@@ -222,7 +248,8 @@ class VendaController extends Controller
             'filter_status_pedido_selecionados',
             'filter_somente_abertos',
             'qtdAlteracaoPendente',
-            'rotaPorVenda'
+            'rotaPorVenda',
+            'periodoPadraoAplicado'
         ));
     }
 

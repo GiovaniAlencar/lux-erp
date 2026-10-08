@@ -1,5 +1,5 @@
-{{-- Botão "PIX" que copia o copia e cola com o valor. Params: $conta ('fiscal'|'nao_fiscal'), $valor, $txid (opcional). --}}
-@php $__pixCode = \App\Helpers\PixCopiaCola::paraConta($conta, (float) $valor, $txid ?? null); @endphp
+{{-- Botão "PIX" que copia o copia e cola com o valor. Params: $conta ('fiscal'|'nao_fiscal'), $valor, $txid (opcional), $pago (true = não mostra). --}}
+@php $__pixCode = !empty($pago) ? null : \App\Helpers\PixCopiaCola::paraConta($conta, (float) $valor, $txid ?? null); @endphp
 @if($__pixCode)
 @include('vendas.partials.pix_js')
 <button type="button" class="lux-pix-btn" data-pix="{{ $__pixCode }}" title="Copiar PIX copia e cola de R$ {{ __moeda($valor) }} ({{ $conta === 'fiscal' ? config('lux.conta_fiscal') : config('lux.conta_nao_fiscal') }})">

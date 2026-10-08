@@ -409,11 +409,11 @@
                     <dl class="space-y-3 text-sm">
                         <div class="flex justify-between gap-3 items-baseline">
                             <dt class="text-gray-300"><span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-bold bg-indigo-600 text-white mr-1">F</span>{{ config('lux.conta_fiscal') }}</dt>
-                            <dd class="text-lg font-bold tabular-nums text-indigo-300 flex items-center gap-2">@include('vendas.partials.pix_btn', ['conta' => 'fiscal', 'valor' => $divFiscal['fiscal'], 'txid' => 'LUX' . $item->id . 'F']){{ __moeda($divFiscal['fiscal']) }}</dd>
+                            <dd class="text-lg font-bold tabular-nums text-indigo-300 flex items-center gap-2">@include('vendas.partials.pix_btn', ['pago' => (($item->status_pagamento ?? '') === 'pago'), 'conta' => 'fiscal', 'valor' => $divFiscal['fiscal'], 'txid' => 'LUX' . $item->id . 'F']){{ __moeda($divFiscal['fiscal']) }}</dd>
                         </div>
                         <div class="flex justify-between gap-3 items-baseline border-b border-gray-700/80 pb-3">
                             <dt class="text-gray-300"><span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-bold bg-gray-500 text-white mr-1">2</span>{{ config('lux.conta_nao_fiscal') }}</dt>
-                            <dd class="text-lg font-bold tabular-nums text-gray-100 flex items-center gap-2">@include('vendas.partials.pix_btn', ['conta' => 'nao_fiscal', 'valor' => $divFiscal['nao_fiscal'], 'txid' => 'LUX' . $item->id . 'N']){{ __moeda($divFiscal['nao_fiscal']) }}</dd>
+                            <dd class="text-lg font-bold tabular-nums text-gray-100 flex items-center gap-2">@include('vendas.partials.pix_btn', ['pago' => (($item->status_pagamento ?? '') === 'pago'), 'conta' => 'nao_fiscal', 'valor' => $divFiscal['nao_fiscal'], 'txid' => 'LUX' . $item->id . 'N']){{ __moeda($divFiscal['nao_fiscal']) }}</dd>
                         </div>
                         <div class="flex justify-between gap-3 text-xs text-gray-500">
                             <dt>Total</dt>

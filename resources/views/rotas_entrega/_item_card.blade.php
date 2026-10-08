@@ -78,9 +78,9 @@
                         @if($divFiscalRota && $divFiscalRota['tem_fiscal'])
                         <div class="small mt-1" title="Divisão do pedido em duas contas (uso interno)">
                             <span class="badge bg-primary">F</span> {{ config('lux.conta_fiscal') }}: <strong>R$ {{ __moeda($divFiscalRota['fiscal']) }}</strong>
-                            @include('vendas.partials.pix_btn', ['conta' => 'fiscal', 'valor' => $divFiscalRota['fiscal'], 'txid' => 'LUX' . $item->venda_id . 'F'])<br>
+                            @include('vendas.partials.pix_btn', ['pago' => ($item->situacao_pagamento === 'pago' || optional($item->venda)->status_pagamento === 'pago'), 'conta' => 'fiscal', 'valor' => $divFiscalRota['fiscal'], 'txid' => 'LUX' . $item->venda_id . 'F'])<br>
                             <span class="badge bg-secondary">2</span> {{ config('lux.conta_nao_fiscal') }}: <strong>R$ {{ __moeda($divFiscalRota['nao_fiscal']) }}</strong>
-                            @include('vendas.partials.pix_btn', ['conta' => 'nao_fiscal', 'valor' => $divFiscalRota['nao_fiscal'], 'txid' => 'LUX' . $item->venda_id . 'N'])
+                            @include('vendas.partials.pix_btn', ['pago' => ($item->situacao_pagamento === 'pago' || optional($item->venda)->status_pagamento === 'pago'), 'conta' => 'nao_fiscal', 'valor' => $divFiscalRota['nao_fiscal'], 'txid' => 'LUX' . $item->venda_id . 'N'])
                         </div>
                         @endif
                     </div>
