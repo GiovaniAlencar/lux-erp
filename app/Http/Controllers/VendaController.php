@@ -83,10 +83,10 @@ class VendaController extends Controller
         $filter_status_pagamento = $request->get('filter_status_pagamento');
         $usuarioAdm = (bool) optional(Usuario::find(get_id_user()))->adm;
         $filter_somente_abertos = $usuarioAdm && $request->boolean('filter_somente_abertos');
-        // Sem filtro de data/cliente: mostra só os últimos 3 dias (lista carrega bem mais rápido).
+        // Sem filtro de data/cliente: mostra só os pedidos de hoje (lista carrega bem mais rápido).
         $periodoPadraoAplicado = false;
         if (empty($start_date) && empty($end_date) && empty($cliente_id) && empty($data_emissao)) {
-            $start_date = now()->subDays(3)->format('Y-m-d');
+            $start_date = now()->format('Y-m-d');
             $pesquisa_data = $pesquisa_data ?: 'created_at';
             $periodoPadraoAplicado = true;
             // preenche os campos do filtro na tela
@@ -169,9 +169,11 @@ class VendaController extends Controller
                 return $query->where('filial_id', $filial_id);
             });
 
-        // Pendentes primeiro; concluídos (entregue/cancelada) no fim. Dentro de cada grupo, mais recentes primeiro.
+        // 1º os pedidos do vendedor logado; depois pendentes antes dos concluídos (entregue/cancelada);
+        // dentro de cada grupo, mais recentes primeiro.
         $data = (clone $queryVendas)
             ->with(['itens', 'cliente:id,razao_social,cpf_cnpj', 'usuario:id,nome'])
+            ->orderByRaw('CASE WHEN usuario_id = ? THEN 0 ELSE 1 END', [(int) get_id_user()])
             ->orderByRaw("CASE COALESCE(status_pedido, 'aguardando_confirmacao')
                 WHEN 'alteracao_pendente' THEN 0
                 WHEN 'aguardando_confirmacao' THEN 1
