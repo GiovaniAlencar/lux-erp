@@ -1,4 +1,4 @@
-@extends('default.layout',['title' => 'Manifesto'])
+@extends('default.layout',['title' => 'Notas recebidas (SEFAZ)'])
 @section('content')
 <div class="page-content">
     <div class="card ">
@@ -6,7 +6,8 @@
             <div class="page-breadcrumb d-sm-flex align-items-center mb-3">
             </div>
             <div class="mt-3">
-                <h5>Manifesto</h5>
+                <h5>Notas recebidas (SEFAZ)</h5>
+                <small class="text-muted">NF-e emitidas contra o CNPJ da LUX (fornecedores). Faça a manifestação e dê entrada como compra. A SEFAZ só deixa consultar de novo após 1 hora quando não há documentos novos.</small>
             </div>
             <div class="col mt-3">
                 {!!Form::open()->fill(request()->all())

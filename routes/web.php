@@ -452,6 +452,7 @@ Route::middleware([
         Route::get('/remove-logo', 'ConfigNotaController@removeLogo')->name('configNF.remove-logo');
         Route::get('/removeSenha/{id}', 'ConfigNotaController@removeSenha')->name('configNF.removeSenha');
         Route::get('/verificaSenha', 'ConfigNotaController@verificaSenha')->name('configNF.verificaSenha');
+        Route::get('/status-sefaz', 'ConfigNotaController@statusSefaz')->name('configNF.status-sefaz');
     });
 
 
@@ -520,6 +521,30 @@ Route::middleware([
     Route::resource('formasPagamento', 'FormaPagamentoController');
     Route::resource('categorias', 'CategoriaController');
 
+    Route::get('produtos-fiscal-xml', 'ProdutoFiscalXmlController@index')->name('produtos-fiscal-xml.index');
+    Route::post('produtos-fiscal-xml/analisar', 'ProdutoFiscalXmlController@analisar')->name('produtos-fiscal-xml.analisar');
+    Route::post('produtos-fiscal-xml/aplicar', 'ProdutoFiscalXmlController@aplicar')->name('produtos-fiscal-xml.aplicar');
+    Route::get('produtos-fiscal-xml/produto/{id}', 'ProdutoFiscalXmlController@produto')->name('produtos-fiscal-xml.produto');
+    Route::get('estoque-fiscal', 'EstoqueFiscalController@index')->name('estoque-fiscal.index');
+    Route::post('estoque-fiscal/ajuste', 'EstoqueFiscalController@ajuste')->name('estoque-fiscal.ajuste');
+    Route::get('estoque-fiscal/historico/{produto}', 'EstoqueFiscalController@historico')->name('estoque-fiscal.historico');
+    Route::get('estoque-fiscal/entrada', 'EstoqueFiscalController@entrada')->name('estoque-fiscal.entrada');
+    Route::post('estoque-fiscal/entrada/analisar', 'EstoqueFiscalController@entradaAnalisar')->name('estoque-fiscal.entrada.analisar');
+    Route::post('estoque-fiscal/entrada/confirmar', 'EstoqueFiscalController@entradaConfirmar')->name('estoque-fiscal.entrada.confirmar');
+    Route::get('estoque-fiscal/produto-info/{id}', 'EstoqueFiscalController@produtoInfo')->name('estoque-fiscal.produto-info');
+    Route::get('notas-fiscais', 'NotaFiscalController@index')->name('notas-fiscais.index');
+    Route::get('notas-fiscais/exportar', 'NotaFiscalController@exportar')->name('notas-fiscais.exportar');
+    Route::get('notas-fiscais/xmls-zip', 'NotaFiscalController@xmlsZip')->name('notas-fiscais.xmls-zip');
+    Route::post('notas-fiscais/{id}/cancelar', 'NotaFiscalController@cancelar')->name('notas-fiscais.cancelar');
+    Route::post('notas-fiscais/{id}/cce', 'NotaFiscalController@cce')->name('notas-fiscais.cce');
+    Route::get('notas-fiscais/{id}/evento/{tipo}', 'NotaFiscalController@eventoPdf')->name('notas-fiscais.evento');
+    Route::get('notas-fiscais/da-venda/{venda}', 'NotaFiscalController@criarDaVenda')->name('notas-fiscais.criar-da-venda');
+    Route::get('notas-fiscais/{id}/conferir', 'NotaFiscalController@conferir')->name('notas-fiscais.conferir');
+    Route::post('notas-fiscais/{id}/salvar', 'NotaFiscalController@salvar')->name('notas-fiscais.salvar');
+    Route::post('notas-fiscais/{id}/excluir', 'NotaFiscalController@excluir')->name('notas-fiscais.excluir');
+    Route::post('notas-fiscais/{id}/consultar', 'NotaFiscalController@consultar')->name('notas-fiscais.consultar');
+    Route::get('notas-fiscais/{id}/danfe', 'NotaFiscalController@danfe')->name('notas-fiscais.danfe');
+    Route::get('notas-fiscais/{id}/xml', 'NotaFiscalController@xml')->name('notas-fiscais.xml');
     Route::resource('produtos', 'ProductController');
 
     Route::get('produtos-import', 'ProductController@import')->name('produtos.import');

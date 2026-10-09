@@ -213,7 +213,7 @@
                                 <span class="badge bg-secondary badge-inativo ms-1">Inativo</span>
                                 @endif
                                 @if($p->fiscal)
-                                <div class="mt-1"><span class="badge badge-fiscal" title="NF-e emitida no outro sistema — cobrado na conta fiscal">Fiscal</span></div>
+                                <div class="mt-1"><span class="badge badge-fiscal" title="Saldo com nota (estoque fiscal)">Fiscal · {{ rtrim(rtrim(number_format((float) $p->estoque_fiscal, 3, ',', '.'), '0'), ',') }} c/ nota</span></div>
                                 @endif
                             </td>
                             <td class="col-categoria small">{{ $p->categoria->nome ?? '—' }}</td>

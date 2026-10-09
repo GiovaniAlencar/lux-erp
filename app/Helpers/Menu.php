@@ -35,6 +35,10 @@ class Menu
 						'rota' => route('produtos.index')
 					],
 					[
+						'nome' => 'Importar dados fiscais (XML)',
+						'rota' => route('produtos-fiscal-xml.index')
+					],
+					[
 						'nome' => 'Clientes',
 						'rota' => route('clientes.index')
 					],
@@ -118,10 +122,10 @@ class Menu
 						'nome' => 'Cotação',
 						'rota' => route('cotacao.index')
 					],
-					// [
-					// 	'nome' => 'Manifesto',
-					// 	'rota' => route('dfe.index')
-					// ],
+					[
+						'nome' => 'Notas recebidas (SEFAZ)',
+						'rota' => route('dfe.index')
+					],
 					// [
 					// 	'nome' => 'Devolução',
 					// 	'rota' => route('devolucao.index')
@@ -169,6 +173,10 @@ class Menu
 					[
 						'nome' => 'Importação em Massa',
 						'rota' => route('estoque.importacaoMassa.index')
+					],
+					[
+						'nome' => 'Estoque fiscal (com nota)',
+						'rota' => route('estoque-fiscal.index')
 					]
 				]
 			],
@@ -189,6 +197,10 @@ class Menu
 					[
 						'nome' => 'Lista de Vendas',
 						'rota' => route('vendas.index')
+					],
+					[
+						'nome' => 'Notas Fiscais (NF-e)',
+						'rota' => route('notas-fiscais.index')
 					],
 					[
 						'nome' => 'Vendas do Site',

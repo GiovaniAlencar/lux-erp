@@ -26,6 +26,10 @@ class NFService{
 	private $config; 
 	private $tools;
 	protected $empresa_id = null;
+	/** LUX: data/hora de emissão escolhida (formato Y-m-d\TH:i:sP). Null = agora. */
+	public $dataEmissao = null;
+	/** LUX: última resposta XML bruta da SEFAZ (consulta), para montar o XML autorizado. */
+	public $ultimaResposta = null;
 
 	public function __construct($config, $emitente){
 		if($emitente->arquivo == null){
@@ -90,8 +94,8 @@ class NFService{
 		$stdIde->mod = 55;
 		$stdIde->serie = $config->numero_serie_nfe;
 		$stdIde->nNF = (int)$lastNumero+1;
-		$stdIde->dhEmi = date("Y-m-d\TH:i:sP");
-		$stdIde->dhSaiEnt = date("Y-m-d\TH:i:sP");
+		$stdIde->dhEmi = $this->dataEmissao ?: date("Y-m-d\TH:i:sP");
+		$stdIde->dhSaiEnt = $this->dataEmissao ?: date("Y-m-d\TH:i:sP");
 		$stdIde->tpNF = 1;
 
 		if($venda->cliente->cod_pais == 1058){
@@ -110,6 +114,10 @@ class NFService{
 			$stdIde->indFinal = 1;
 		}else{
 			$stdIde->indFinal = $venda->cliente->consumidor_final;
+		}
+		// LUX: destinatário não contribuinte (indIEDest 9) exige consumidor final (rejeição 696)
+		if(!$venda->cliente->contribuinte || $venda->cliente->cod_pais != 1058){
+			$stdIde->indFinal = 1;
 		}
 		$stdIde->indPres = 1;
 
@@ -180,6 +188,10 @@ class NFService{
 		$stdDest = new \stdClass();
 		$pFisica = false;
 		$stdDest->xNome = $this->retiraAcentos($venda->cliente->razao_social);
+		if((int)$config->ambiente == 2){
+			// exigência da SEFAZ em homologação
+			$stdDest->xNome = 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL';
+		}
 
 		if($venda->cliente->cod_pais != 1058){
 			$stdDest->indIEDest = "9";
@@ -944,8 +956,9 @@ class NFService{
 		$stdDetPag = new \stdClass();
 
 		$stdDetPag->tPag = $venda->tipo_pagamento;
+		$freteVPag = ($venda->frete && isset($venda->frete->valor)) ? (float)$venda->frete->valor : 0;
 		$stdDetPag->vPag = $venda->tipo_pagamento != '90' ? $this->format($somaProdutos - 
-			$venda->desconto + $venda->acrescimo, $config->casas_decimais) : 0.00; 
+			$venda->desconto + $venda->acrescimo + $freteVPag, $config->casas_decimais) : 0.00; 
 
 		if($venda->descricao_pag_outros != ""){
 			$stdDetPag->xPag = $venda->descricao_pag_outros;
@@ -1161,6 +1174,7 @@ class NFService{
 
 			$chave = $venda->chave;
 			$response = $this->tools->sefazConsultaChave($chave);
+			$this->ultimaResposta = $response;
 
 			$stdCl = new Standardize($response);
 			$arr = $stdCl->toArray();
@@ -1278,26 +1292,43 @@ class NFService{
 
 	public function transmitir($signXml, $chave){
 		try{
-			$idLote = str_pad(100, 15, '0', STR_PAD_LEFT);
-			$resp = $this->tools->sefazEnviaLote([$signXml], $idLote);
+			$idLote = str_pad((string) mt_rand(1, 999999999), 15, '0', STR_PAD_LEFT);
+			// LUX: envio SÍNCRONO (indSinc=1). A SVRS (ex.: PB) rejeita lote assíncrono com 1 nota (452).
+			$resp = $this->tools->sefazEnviaLote([$signXml], $idLote, 1);
 
 			$st = new Standardize();
 			$std = $st->toStd($resp);
-			sleep(2);
-			if ($std->cStat != 103) {
 
-				// return "Erro: [$std->cStat] - $std->xMotivo";
+			if ($std->cStat == 104) {
+				// lote processado: o protocolo já vem na resposta
+				try {
+					$xml = Complements::toAuthorize($signXml, $resp);
+					file_put_contents(public_path('xml_nfe/').$chave.'.xml',$xml);
+					return [
+						'erro' => 0,
+						'success' => $std->protNFe->infProt->nProt ?? ''
+					];
+				} catch (\Exception $e) {
+					$inf = $std->protNFe->infProt ?? null;
+					return [
+						'erro' => 1,
+						'error' => $inf ? "[$inf->cStat] - $inf->xMotivo" : $e->getMessage()
+					];
+				}
+			}
+
+			if ($std->cStat != 103) {
 				return [
 					'erro' => 1,
 					'error' => "[$std->cStat] - $std->xMotivo"
 				];
 			}
+
+			// a SEFAZ aceitou mas vai processar depois (assíncrono): consulta o recibo
 			sleep(3);
-			$recibo = $std->infRec->nRec; 
-			
+			$recibo = $std->infRec->nRec;
 			$protocolo = $this->tools->sefazConsultaRecibo($recibo);
-			sleep(4);
-			//return $protocolo;
+			sleep(2);
 			try {
 				$xml = Complements::toAuthorize($signXml, $protocolo);
 				file_put_contents(public_path('xml_nfe/').$chave.'.xml',$xml);
@@ -1305,7 +1336,6 @@ class NFService{
 					'erro' => 0,
 					'success' => $recibo
 				];
-				// $this->printDanfe($xml);
 			} catch (\Exception $e) {
 				return [
 					'erro' => 1,
@@ -1320,6 +1350,6 @@ class NFService{
 			];
 		}
 
-	}	
+	}
 
 }

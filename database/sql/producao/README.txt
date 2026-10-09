@@ -14,6 +14,9 @@ Ordem sugerida:
 11) 15_create_promocoes.sql (módulo de promoções por produto)
 12) 16_alter_ecommerce_order_items_promocao_id.sql (rastreia promoção usada em cada item do site; requer 15 aplicado antes)
 13) 17_add_fiscal_produtos_item_vendas.sql (divisão fiscal / não fiscal da venda em duas contas)
+14) 18_create_notas_fiscais.sql (emissão de NF-e da parte fiscal pelo ERP)
+15) 19_estoque_fiscal.sql (saldo de estoque com nota; requer 17 aplicado antes)
+16) 20_custo_fiscal.sql (custo médio das unidades com nota; requer 19)
 
 Deploy completo (SQL + lista de arquivos FTP): ver DEPLOY_JUN2026.txt
 

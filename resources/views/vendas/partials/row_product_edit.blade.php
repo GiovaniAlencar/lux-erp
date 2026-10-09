@@ -14,6 +14,7 @@
     data-grupo-preco="{{ $grupoPreco ?? '' }}">
     <td class="d-none d-xl-table-cell">
         <input readonly type="tel" name="produto_id[]" class="form-control form-control-sm" value="{{ $productItem->produto_id }}">
+        <input type="hidden" name="qtd_fiscal[]" value="{{ number_format((float) ($productItem->qtd_fiscal ?? 0), 3, '.', '') }}">
     </td>
     <td>
         <input readonly type="text" name="produto_nome[]" class="form-control form-control-sm" value="{{ $product->nome }}">

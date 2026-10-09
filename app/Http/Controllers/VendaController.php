@@ -391,7 +391,8 @@ class VendaController extends Controller
                             'valor' => __convert_value_bd($request->valor_unitario[$i]),
                             'valor_custo' => $product->valor_compra,
                             'x_pedido' => $request->x_pedido[$i],
-                            'num_item_pedido' => $request->num_item_pedido[$i]
+                            'num_item_pedido' => $request->num_item_pedido[$i],
+                            'qtd_fiscal' => $this->qtdFiscalDoRequest($request, $i, $product),
                         ]);
                         // decrementa no mesmo lock
                         $qtdDec = __convert_value_bd($request->quantidade[$i]);
@@ -403,6 +404,7 @@ class VendaController extends Controller
                             $lockedStocks[$product->id]->save();
                         }
                     }
+                    (new \App\Services\EstoqueFiscal())->consumirVenda($venda->id, ItemVenda::where('venda_id', $venda->id)->get());
                     if ($request->forma_pagamento != 'a_vista') {
 
                         for ($i = 0; $i < sizeof($request->data_vencimento); $i++) {
@@ -662,6 +664,10 @@ class VendaController extends Controller
             session()->flash('flash_erro', 'Esta venda está fechada no caixa e não pode ser alterada.');
             return redirect()->route('vendas.index');
         }
+        if ($vendaPre->notaFiscalAutorizada()) {
+            session()->flash('flash_erro', 'Esta venda tem NF-e autorizada. Cancele a NF-e antes de alterar o pedido.');
+            return redirect()->route('vendas.show', $vendaPre->id);
+        }
         $this->_validate($request);
         if ($request->type == 'venda') {
             try {
@@ -719,6 +725,7 @@ class VendaController extends Controller
                     $item->fill($request->all())->save();
                     $stockMove = new StockMove();
                     $itens = $item->itens;
+                    (new \App\Services\EstoqueFiscal())->estornarVenda($item->id, $itens);
                     $this->revertStock($itens);
                     $item->itens()->delete();
                     $item->duplicatas()->delete();
@@ -759,7 +766,8 @@ class VendaController extends Controller
                             'valor' => __convert_value_bd($request->valor_unitario[$i]),
                             'valor_custo' => $product->valor_compra,
                             'x_pedido' => $request->x_pedido[$i],
-                            'num_item_pedido' => $request->num_item_pedido[$i]
+                            'num_item_pedido' => $request->num_item_pedido[$i],
+                            'qtd_fiscal' => $this->qtdFiscalDoRequest($request, $i, $product),
                         ]);
                         // decrementa no mesmo lock
                         $qtdDec = __convert_value_bd($request->quantidade[$i]);
@@ -771,6 +779,7 @@ class VendaController extends Controller
                             $lockedStocks[$product->id]->save();
                         }
                     }
+                    (new \App\Services\EstoqueFiscal())->consumirVenda($item->id, ItemVenda::where('venda_id', $item->id)->get());
 
                     if ($request->forma_pagamento != 'a_vista') {
                         for ($i = 0; $i < sizeof($request->data_vencimento); $i++) {
@@ -917,9 +926,14 @@ class VendaController extends Controller
             session()->flash('flash_erro', 'Esta venda está fechada no caixa e não pode ser excluída.');
             return redirect()->route('vendas.index');
         }
+        if ($item->notaFiscalAutorizada()) {
+            session()->flash('flash_erro', 'Esta venda tem NF-e autorizada. Cancele a NF-e antes de excluir o pedido.');
+            return redirect()->route('vendas.index');
+        }
         try {
             DB::transaction(function () use ($item) {
                 $item->loadMissing('itens.produto');
+                (new \App\Services\EstoqueFiscal())->estornarVenda($item->id, $item->itens);
                 $this->revertStock($item->itens);
                 $this->registrarMovimentacoesExclusaoVenda($item);
                 $item->delete();
@@ -1755,6 +1769,21 @@ class VendaController extends Controller
         ]);
     }
 
+    /** Quantidade fiscal escolhida na tela para a linha $i (0 se o produto não for fiscal). */
+    private function qtdFiscalDoRequest(Request $request, int $i, $product): float
+    {
+        if (!$product || !(int) $product->fiscal) {
+            return 0.0;
+        }
+        $qtd = (float) __convert_value_bd((string) $request->quantidade[$i]);
+        $raw = $request->input('qtd_fiscal.' . $i);
+        if ($raw === null || $raw === '') {
+            return 0.0;
+        }
+        $qf = (float) __convert_value_bd((string) $raw);
+        return round(max(0, min($qf, $qtd)), 3);
+    }
+
     /**
      * Venda com item fiscal exige CPF/CNPJ válido no cadastro do cliente.
      * Se veio "cliente_cpf_cnpj" na tela da venda, grava no cadastro do cliente.
@@ -1762,11 +1791,14 @@ class VendaController extends Controller
      */
     private function garantirDocumentoClienteFiscal(Request $request): void
     {
-        $ids = array_filter(array_map('intval', (array) $request->produto_id));
-        if (empty($ids)) {
-            return;
+        $temFiscal = false;
+        foreach ((array) $request->produto_id as $i => $pid) {
+            $qf = (float) __convert_value_bd((string) ($request->input('qtd_fiscal.' . $i) ?? '0'));
+            if ($qf > 0 && Produto::where('id', (int) $pid)->where('fiscal', 1)->exists()) {
+                $temFiscal = true;
+                break;
+            }
         }
-        $temFiscal = Produto::whereIn('id', $ids)->where('fiscal', 1)->exists();
         if (!$temFiscal) {
             return;
         }

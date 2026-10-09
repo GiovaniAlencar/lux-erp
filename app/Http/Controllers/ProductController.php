@@ -412,6 +412,19 @@ class ProductController extends Controller
             // 'CFOP_entrada_estadual.required' => 'Campo Obrigatório'
         ];
         $this->validate($request, $rules, $messages);
+
+        // Produto fiscal: dados da NF-e obrigatórios
+        $request->merge(\App\Support\ProdutoFiscal::normalizar($request->only([
+            'NCM', 'CEST', 'CFOP_saida_estadual', 'CFOP_saida_inter_estadual',
+        ])));
+        if ((int) $request->input('fiscal', 0) === 1) {
+            $dados = $request->all();
+            $dados['unidade_venda'] = $dados['unidade_venda'] ?? 'UN';
+            $errosFiscais = \App\Support\ProdutoFiscal::erros($dados);
+            if (!empty($errosFiscais)) {
+                throw \Illuminate\Validation\ValidationException::withMessages($errosFiscais);
+            }
+        }
     }
 
 

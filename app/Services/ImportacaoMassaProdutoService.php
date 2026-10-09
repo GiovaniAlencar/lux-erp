@@ -32,10 +32,13 @@ class ImportacaoMassaProdutoService
 
                     return strtolower($c);
                 }, $data);
-                if ($header !== self::CABECALHO) {
+                // aceita também só as 4 primeiras colunas (produto de preço único)
+                $header = array_values(array_filter($header, fn ($c) => $c !== ''));
+                if ($header !== self::CABECALHO && $header !== array_slice(self::CABECALHO, 0, 4)) {
                     fclose($handle);
                     throw new \RuntimeException(
                         'Cabeçalho inválido. Use: ' . implode(',', self::CABECALHO)
+                        . ' (ou só ' . implode(',', array_slice(self::CABECALHO, 0, 4)) . ' para preço único)'
                     );
                 }
                 $headerOk = true;
@@ -120,8 +123,9 @@ class ImportacaoMassaProdutoService
         $qtd = $this->parseNumero($raw['quantidade'] ?? '', 'quantidade', $erros);
         $custo = $this->parseNumero($raw['custo'] ?? '', 'custo', $erros);
         $p1 = $this->parseNumero($raw['preco_1'] ?? '', 'preco_1', $erros);
-        $p2 = $this->parseNumero($raw['preco_2'] ?? '', 'preco_2', $erros);
-        $p3 = $this->parseNumero($raw['preco_3'] ?? '', 'preco_3', $erros);
+        // preço 2 e 3 são opcionais: vazios = produto de preço único
+        $p2 = trim((string) ($raw['preco_2'] ?? '')) === '' ? null : $this->parseNumero($raw['preco_2'], 'preco_2', $erros);
+        $p3 = trim((string) ($raw['preco_3'] ?? '')) === '' ? null : $this->parseNumero($raw['preco_3'], 'preco_3', $erros);
 
         $codigo = (int) $codigoStr;
         $produto = null;
@@ -161,9 +165,9 @@ class ImportacaoMassaProdutoService
             'preco_1_atual' => $produto ? (float) $produto->valor_venda : null,
             'preco_1_novo' => $p1 ?? 0.0,
             'preco_2_atual' => $produto && $produto->preco_2 !== null ? (float) $produto->preco_2 : null,
-            'preco_2_novo' => $p2 ?? 0.0,
+            'preco_2_novo' => $p2,
             'preco_3_atual' => $produto && $produto->preco_3 !== null ? (float) $produto->preco_3 : null,
-            'preco_3_novo' => $p3 ?? 0.0,
+            'preco_3_novo' => $p3,
             'valor_linha' => $valido ? round($qtdF * $custoF, 2) : 0.0,
         ];
     }

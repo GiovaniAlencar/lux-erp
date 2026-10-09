@@ -22,6 +22,7 @@
 
     <div class="col-md-3">
         {!! Form::text('ie_rg', 'IE')->attrs(['class' => 'ignore']) !!}
+        <div class="form-text">CNPJ: obrigatória para emitir NF-e (número ou "ISENTO").</div>
     </div>
 
     <div class="col-md-2">

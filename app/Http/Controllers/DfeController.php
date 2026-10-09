@@ -62,6 +62,9 @@ class DfeController extends Controller
 		->when(!empty($end_date), function ($query) use ($end_date) {
 			return $query->whereDate('data_emissao', '<=', $end_date);
 		})
+		->when(!empty($tipo), function ($query) use ($tipo) {
+			return $query->where('tipo', $tipo);
+		})
 		->orderBy('data_emissao', 'desc')
 		->paginate(env("PAGINACAO"));
 
@@ -97,7 +100,7 @@ class DfeController extends Controller
 				"atualizacao" => date('Y-m-d h:i:s'),
 				"tpAmb" => 1,
 				"razaosocial" => $config->razao_social,
-				"siglaUF" => $config->UF,
+				"siglaUF" => $config->UF ?: optional($config->cidade)->uf,
 				"cnpj" => $cnpj,
 				"schemes" => "PL_009_V4",
 				"versao" => "4.00",

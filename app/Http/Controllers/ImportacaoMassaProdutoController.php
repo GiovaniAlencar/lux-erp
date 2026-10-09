@@ -212,8 +212,9 @@ class ImportacaoMassaProdutoController extends Controller
 
                     $produto->valor_compra = (float) $linha['custo_novo'];
                     $produto->valor_venda = (float) $linha['preco_1_novo'];
-                    $produto->preco_2 = (float) $linha['preco_2_novo'];
-                    $produto->preco_3 = (float) $linha['preco_3_novo'];
+                    // vazio no CSV = preço único (sem atacado 1/2)
+                    $produto->preco_2 = $linha['preco_2_novo'] !== null && $linha['preco_2_novo'] !== '' ? (float) $linha['preco_2_novo'] : null;
+                    $produto->preco_3 = $linha['preco_3_novo'] !== null && $linha['preco_3_novo'] !== '' ? (float) $linha['preco_3_novo'] : null;
                     $produto->save();
 
                     if ($quantidade > 0) {

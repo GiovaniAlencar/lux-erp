@@ -287,8 +287,8 @@ $trib = $tributacao ?? null;
             {!! Form::select('inativo', 'Inativo', [0 => 'Não', 1 => 'Sim'])->attrs(['class' => 'form-select']) !!}
         </div>
         <div class="col-md-4">
-            {!! Form::select('fiscal', 'Fiscal (NF-e emitida no outro sistema)', [0 => 'Não', 1 => 'Sim'])->attrs(['class' => 'form-select']) !!}
-            <div class="form-text">Se "Sim", o valor deste produto na venda é cobrado na conta fiscal.</div>
+            {!! Form::select('fiscal', 'Fiscal (estoque com NF-e)', [0 => 'Não', 1 => 'Sim'])->attrs(['class' => 'form-select']) !!}
+            <div class="form-text">Se "Sim", cobra na conta fiscal e exige os dados fiscais abaixo.</div>
         </div>
         @isset($item)
         <div class="d-none">
@@ -300,6 +300,8 @@ $trib = $tributacao ?? null;
         </div>
         @endisset
     </div>
+
+    @include('produtos.partials.dados_fiscais')
 
     {{-- Precificação --}}
     <div class="produto-secao-titulo mt-4">Precificação</div>
@@ -397,7 +399,6 @@ $trib = $tributacao ?? null;
     <input type="hidden" name="estoque_minimo" value="{{ $item->estoque_minimo }}">
     <input type="hidden" name="limite_maximo_desconto" value="{{ $item->limite_maximo_desconto }}">
     <input type="hidden" name="alerta_vencimento" value="{{ $item->alerta_vencimento }}">
-    <input type="hidden" name="CEST" value="{{ $item->CEST }}">
     <input type="hidden" name="referencia_balanca" value="{{ $item->referencia_balanca }}">
     <input type="hidden" name="perc_comissao" value="{{ $item->perc_comissao }}">
     <input type="hidden" name="envia_controle_pedidos" value="{{ $item->envia_controle_pedidos }}">
@@ -408,11 +409,6 @@ $trib = $tributacao ?? null;
     <input type="hidden" name="composto" value="{{ $item->composto }}">
     <input type="hidden" name="derivado_petroleo" value="{{ $item->derivado_petroleo }}">
     <input type="hidden" name="ecommerce" value="0">
-    <input type="hidden" name="NCM" value="{{ $item->NCM }}">
-    <input type="hidden" name="CST_CSOSN" value="{{ $item->CST_CSOSN }}">
-    <input type="hidden" name="CST_PIS" value="{{ $item->CST_PIS }}">
-    <input type="hidden" name="CST_COFINS" value="{{ $item->CST_COFINS }}">
-    <input type="hidden" name="CST_IPI" value="{{ $item->CST_IPI }}">
     <input type="hidden" name="CST_CSOSN_EXP" value="{{ $item->CST_CSOSN_EXP }}">
     <input type="hidden" name="CST_PIS_entrada" value="{{ $item->CST_PIS_entrada }}">
     <input type="hidden" name="CST_COFINS_entrada" value="{{ $item->CST_COFINS_entrada }}">
@@ -422,7 +418,6 @@ $trib = $tributacao ?? null;
     <input type="hidden" name="estoque_minimo" value="0">
     <input type="hidden" name="limite_maximo_desconto" value="0">
     <input type="hidden" name="alerta_vencimento" value="0">
-    <input type="hidden" name="CEST" value="">
     <input type="hidden" name="referencia_balanca" value="0">
     <input type="hidden" name="perc_comissao" value="0">
     <input type="hidden" name="envia_controle_pedidos" value="0">
@@ -433,11 +428,6 @@ $trib = $tributacao ?? null;
     <input type="hidden" name="composto" value="0">
     <input type="hidden" name="derivado_petroleo" value="0">
     <input type="hidden" name="ecommerce" value="0">
-    <input type="hidden" name="NCM" value="{{ $trib?->ncm_padrao ?? '' }}">
-    <input type="hidden" name="CST_CSOSN" value="{{ $config->CST_CSOSN_padrao }}">
-    <input type="hidden" name="CST_PIS" value="{{ $config->CST_PIS_padrao }}">
-    <input type="hidden" name="CST_COFINS" value="{{ $config->CST_COFINS_padrao }}">
-    <input type="hidden" name="CST_IPI" value="{{ $config->CST_IPI_padrao }}">
     <input type="hidden" name="CST_CSOSN_EXP" value="{{ $config->CST_CSOSN_padrao }}">
     <input type="hidden" name="CST_PIS_entrada" value="{{ $config->CST_PIS_padrao }}">
     <input type="hidden" name="CST_COFINS_entrada" value="{{ $config->CST_COFINS_padrao }}">

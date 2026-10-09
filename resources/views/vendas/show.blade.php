@@ -224,7 +224,7 @@
                                 @foreach ($item->itens as $p)
                                 <tr class="transition-colors hover:bg-gray-700/30">
                                     <td class="px-4 py-3.5 text-gray-400 font-mono">{{ $p->id }}</td>
-                                    <td class="px-4 py-3.5 text-gray-100">{{ $p->produto->nome }}@if($p->fiscal) <span class="ml-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-bold bg-indigo-600 text-white" title="Item fiscal: NF-e no outro sistema">F</span>@endif</td>
+                                    <td class="px-4 py-3.5 text-gray-100">{{ $p->produto->nome }}@if((float) $p->qtd_fiscal > 0) <span class="ml-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-bold bg-indigo-600 text-white" title="Unidades com nota (conta fiscal)">F {{ (float) $p->qtd_fiscal < (float) $p->quantidade ? rtrim(rtrim(number_format((float) $p->qtd_fiscal, 3, ',', ''), '0'), ',') . ' un' : '' }}</span>@endif</td>
                                     <td class="px-4 py-3.5 text-right tabular-nums text-gray-200">{{ __moeda($p->quantidade) }}</td>
                                     <td class="px-4 py-3.5 text-right tabular-nums text-gray-300">{{ __moeda($p->valor) }}</td>
                                     <td class="px-4 py-3.5 text-right tabular-nums font-medium text-indigo-300">{{ __moeda($p->quantidade * $p->valor) }}</td>
@@ -431,21 +431,47 @@
                                 @foreach($item->itensFiscais() as $fi)
                                 <tr class="border-t border-gray-700/60">
                                     <td class="py-1 pr-2">{{ $fi->produto->nome ?? ('#' . $fi->produto_id) }}</td>
-                                    <td class="py-1 text-right tabular-nums">{{ rtrim(rtrim(number_format((float) $fi->quantidade, 3, ',', '.'), '0'), ',') }}</td>
+                                    <td class="py-1 text-right tabular-nums">{{ rtrim(rtrim(number_format((float) $fi->qtd_fiscal, 3, ',', '.'), '0'), ',') }}</td>
                                     <td class="py-1 text-right tabular-nums">{{ __moeda($fi->valor) }}</td>
-                                    <td class="py-1 text-right tabular-nums">{{ __moeda($fi->subtotal()) }}</td>
+                                    <td class="py-1 text-right tabular-nums">{{ __moeda(round((float) $fi->valor * (float) $fi->qtd_fiscal, 2)) }}</td>
                                 </tr>
                                 @endforeach
                             </tbody>
                         </table>
                         @if((float) $item->desconto > 0 || (float) $item->acrescimo > 0)
-                        <p class="mt-2 text-[11px] text-gray-500">Desconto/acréscimo rateados: valor fiscal já considera a parte proporcional. Itens: {{ __moeda($divFiscal['itens_fiscal']) }} → cobrar {{ __moeda($divFiscal['fiscal']) }}.</p>
+                        <p class="mt-2 text-[11px] text-gray-500">Frete, desconto e acréscimo ficam na {{ config('lux.conta_nao_fiscal') }}. Itens fiscais: {{ __moeda($divFiscal['itens_fiscal']) }} → cobrar {{ __moeda($divFiscal['fiscal']) }}.</p>
                         @endif
                     </details>
 
                     {{-- Controle da NF-e emitida no outro sistema --}}
                     <div class="mt-4 border-t border-gray-700/80 pt-4">
-                        <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">NF-e fiscal (outro sistema)</p>
+                        <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">NF-e da parte fiscal</p>
+                        @php
+                            $nfErp = \App\Models\NotaFiscal::where('venda_id', $item->id)->orderByDesc('id')->first();
+                            $nfErpCls = ['rascunho' => 'bg-gray-600', 'rejeitada' => 'bg-rose-600', 'autorizada' => 'bg-emerald-600', 'cancelada' => 'bg-gray-800'];
+                        @endphp
+                        @if($divFiscal['tem_fiscal'])
+                        <div class="mb-3 flex flex-wrap items-center gap-2">
+                            @if($nfErp)
+                            <a href="{{ route('notas-fiscais.conferir', $nfErp->id) }}" class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500">
+                                <i data-lucide="file-text" class="size-4"></i>
+                                {{ $nfErp->numero ? 'NF-e ' . $nfErp->numero : 'Rascunho da NF-e' }}
+                            </a>
+                            <span class="rounded px-2 py-0.5 text-xs font-semibold text-white {{ $nfErpCls[$nfErp->status] ?? 'bg-gray-600' }}">{{ \App\Models\NotaFiscal::STATUS[$nfErp->status] ?? $nfErp->status }}</span>
+                            @if($nfErp->status === 'autorizada')
+                            <a href="{{ route('notas-fiscais.danfe', $nfErp->id) }}" target="_blank" class="text-xs text-indigo-300 underline">DANFE</a>
+                            @endif
+                            @if($nfErp->status === 'cancelada')
+                            <a href="{{ route('notas-fiscais.criar-da-venda', $item->id) }}" class="text-xs text-indigo-300 underline">Emitir nova</a>
+                            @endif
+                            @else
+                            <a href="{{ route('notas-fiscais.criar-da-venda', $item->id) }}" class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500">
+                                <i data-lucide="file-plus" class="size-4"></i> Emitir NF-e (conferir antes)
+                            </a>
+                            @endif
+                        </div>
+                        @endif
+                        <p class="text-[11px] text-gray-500 mb-2">Controle manual (para nota emitida em outro sistema):</p>
                         @if($sitNf === 'emitida')
                             <div class="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
                                 <i data-lucide="circle-check" class="size-4 inline -mt-0.5"></i>

@@ -44,7 +44,7 @@
                                 </div>
                             </div>
                             <p class="small text-muted mb-3">
-                                Colunas: <code>codigo,quantidade,custo,preco_1,preco_2,preco_3</code> — o código é o <strong>ID</strong> do produto no sistema.
+                                Colunas: <code>codigo,quantidade,custo,preco_1,preco_2,preco_3</code> — o código é o <strong>ID</strong> do produto no sistema. Produto de <strong>preço único</strong>: deixe preco_2 e preco_3 vazios (ou envie só <code>codigo,quantidade,custo,preco_1</code>).
                             </p>
                             <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
                                 <a href="{{ route('estoque.importacaoMassa.modelo') }}" class="btn btn-outline-primary btn-sm">

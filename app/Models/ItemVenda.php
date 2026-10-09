@@ -9,7 +9,7 @@ class ItemVenda extends Model
     protected $fillable = [
         'produto_id', 'venda_id', 'quantidade', 'valor', 'cfop', 'altura', 'largura', 'profundidade',
         'acrescimo_perca', 'esquerda', 'direita', 'inferior', 'superior', 'valor_custo', 
-        'quantidade_dimensao', 'x_pedido', 'num_item_pedido', 'fiscal'
+        'quantidade_dimensao', 'x_pedido', 'num_item_pedido', 'fiscal', 'qtd_fiscal'
     ];
 
     protected $casts = [
@@ -17,17 +17,32 @@ class ItemVenda extends Model
     ];
 
     /**
-     * Ao criar o item, copia a marcação "fiscal" do cadastro do produto (se não veio explícita).
-     * Vale para todos os caminhos que criam itens (venda manual, edição, clone, e-commerce...).
+     * Parte fiscal do item = qtd_fiscal (unidades com nota). Definida na venda pelo saldo fiscal.
+     * Caminhos que não informam (site, clone etc.) ficam como não fiscal (conta 2).
      */
     protected static function booted()
     {
-        static::creating(function (ItemVenda $item) {
-            if (!array_key_exists('fiscal', $item->getAttributes()) || $item->getAttributes()['fiscal'] === null) {
-                $produto = $item->produto_id ? Produto::find($item->produto_id) : null;
-                $item->fiscal = $produto ? (bool) ($produto->fiscal ?? false) : false;
+        static::saving(function (ItemVenda $item) {
+            $attrs = $item->getAttributes();
+            if (!array_key_exists('qtd_fiscal', $attrs) || $attrs['qtd_fiscal'] === null) {
+                $item->qtd_fiscal = 0;
             }
+            $q = (float) $item->qtd_fiscal;
+            $max = (float) $item->quantidade;
+            if ($q < 0) {
+                $q = 0;
+            }
+            if ($q > $max) {
+                $q = $max;
+            }
+            $item->qtd_fiscal = round($q, 3);
+            $item->fiscal = $q > 0;
         });
+    }
+
+    public function qtdNaoFiscal(): float
+    {
+        return max(0, round((float) $this->quantidade - (float) $this->qtd_fiscal, 3));
     }
 
     public function subtotal(): float

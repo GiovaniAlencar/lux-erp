@@ -19,6 +19,8 @@ class Produto extends Model
 		'cor',
 		'valor_venda',
 		'fiscal',
+		'estoque_fiscal',
+		'custo_fiscal',
 		'preco_2',
 		'preco_3',
 		'NCM',

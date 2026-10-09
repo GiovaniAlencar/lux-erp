@@ -402,8 +402,10 @@ class Venda extends Model
      *
      * Regras:
      * - cada item usa a marcação "fiscal" gravada no item no momento da venda;
-     * - desconto e acréscimo são rateados proporcionalmente ao valor dos itens de cada lado;
-     * - frete vai para o NÃO FISCAL; se o pedido só tiver itens fiscais, vai para o FISCAL;
+     * - frete, desconto e acréscimo ficam TODOS na parte NÃO FISCAL (conta 2);
+     *   a parte fiscal fica com o valor cheio dos itens fiscais (= valor da NF-e);
+     * - se o pedido só tem itens fiscais (não existe conta 2), tudo vai para o fiscal;
+     * - se o desconto for maior que a conta 2 inteira, o que sobrar desconta do fiscal;
      * - o não fiscal é calculado como (total - fiscal), então a soma sempre fecha no centavo.
      *
      * @return array{fiscal: float, nao_fiscal: float, total: float, itens_fiscal: float, itens_nao_fiscal: float, tem_fiscal: bool, misto: bool}
@@ -414,12 +416,10 @@ class Venda extends Model
         $itensNaoFiscal = 0.0;
 
         foreach ($this->itens as $it) {
-            $sub = round((float) $it->valor * (float) $it->quantidade, 2);
-            if ($it->fiscal) {
-                $itensFiscal += $sub;
-            } else {
-                $itensNaoFiscal += $sub;
-            }
+            $qf = min((float) $it->quantidade, max(0, (float) ($it->qtd_fiscal ?? 0)));
+            $fis = round((float) $it->valor * $qf, 2);
+            $itensFiscal += $fis;
+            $itensNaoFiscal += round((float) $it->valor * (float) $it->quantidade, 2) - $fis;
         }
 
         return self::calcularDivisaoFiscal(
@@ -445,19 +445,17 @@ class Venda extends Model
     ): array {
         $total = round($valorTotal - $desconto + $acrescimo + $frete, 2);
 
-        $baseItens = $itensFiscal + $itensNaoFiscal;
-        $proporcaoFiscal = $baseItens > 0 ? $itensFiscal / $baseItens : 0.0;
-
         $fiscal = 0.0;
         if ($itensFiscal > 0) {
-            $fiscal = $itensFiscal - ($desconto * $proporcaoFiscal) + ($acrescimo * $proporcaoFiscal);
             if ($itensNaoFiscal <= 0) {
-                $fiscal += $frete;
+                // não existe conta 2: frete/desconto/acréscimo ficam no fiscal
+                $fiscal = $total;
+            } else {
+                $baseNaoFiscal = $itensNaoFiscal + $acrescimo + $frete;
+                $excedente = max(0, $desconto - $baseNaoFiscal);
+                $fiscal = $itensFiscal - $excedente;
             }
-            $fiscal = round(max(0, $fiscal), 2);
-            if ($fiscal > $total) {
-                $fiscal = max(0, $total);
-            }
+            $fiscal = round(max(0, min($fiscal, $total)), 2);
         }
 
         return [
@@ -489,8 +487,8 @@ class Venda extends Model
                 'v.desconto',
                 'v.acrescimo',
                 'v.frete',
-                \Illuminate\Support\Facades\DB::raw('COALESCE(SUM(CASE WHEN iv.fiscal = 1 THEN ROUND(iv.valor * iv.quantidade, 2) ELSE 0 END), 0) as itens_fiscal'),
-                \Illuminate\Support\Facades\DB::raw('COALESCE(SUM(CASE WHEN iv.fiscal = 1 THEN 0 ELSE ROUND(iv.valor * iv.quantidade, 2) END), 0) as itens_nao_fiscal')
+                \Illuminate\Support\Facades\DB::raw('COALESCE(SUM(ROUND(iv.valor * LEAST(iv.qtd_fiscal, iv.quantidade), 2)), 0) as itens_fiscal'),
+                \Illuminate\Support\Facades\DB::raw('COALESCE(SUM(ROUND(iv.valor * iv.quantidade, 2) - ROUND(iv.valor * LEAST(iv.qtd_fiscal, iv.quantidade), 2)), 0) as itens_nao_fiscal')
             )
             ->get();
 
@@ -547,8 +545,14 @@ class Venda extends Model
     public function itensFiscais()
     {
         return $this->itens->filter(function ($it) {
-            return (bool) $it->fiscal;
+            return (float) ($it->qtd_fiscal ?? 0) > 0;
         })->values();
+    }
+
+    /** NF-e autorizada (emitida pelo ERP) ligada a esta venda, se houver. */
+    public function notaFiscalAutorizada()
+    {
+        return NotaFiscal::where('venda_id', $this->id)->where('status', 'autorizada')->first();
     }
 
     public function valorLiquido()

@@ -7,6 +7,8 @@ use App\Models\NaturezaOperacao;
 use App\Models\ConfigNota;
 use App\Models\Cidade;
 use App\Models\Certificado;
+use App\Models\Tributacao;
+use App\Services\NFService;
 use App\Utils\UploadUtil;
 use NFePHP\Common\Certificate;
 use Illuminate\Support\Facades\DB;
@@ -72,6 +74,9 @@ class ConfigNotaController extends Controller
         }
         $soapDesativado = !extension_loaded('soap');
         $cidades = Cidade::all();
+        $tributacao = Tributacao::where('empresa_id', $request->empresa_id)->first();
+        $regimes = Tributacao::regimes();
+        $statusNfe = $this->statusNfe($item, $infoCertificado, $tributacao, $soapDesativado);
         return view(
             'config_nota/index',
             compact(
@@ -86,7 +91,10 @@ class ConfigNotaController extends Controller
                 'listaCSTIPI',
                 'cUF',
                 'cidades',
-                'item'
+                'item',
+                'tributacao',
+                'regimes',
+                'statusNfe'
             )
         );
     }
@@ -102,7 +110,9 @@ class ConfigNotaController extends Controller
                 'serial' => $publicKey->serialNumber,
                 'inicio' => \Carbon\Carbon::parse($inicio)->format('d-m-Y H:i'),
                 'expiracao' => \Carbon\Carbon::parse($expiracao)->format('d-m-Y H:i'),
-                'id' => $publicKey->commonName
+                'id' => $publicKey->commonName,
+                'cnpj' => preg_replace('/\D/', '', (string) $publicKey->cnpj()),
+                'expira_em' => $expiracao,
             ];
         } catch (\Exception $e) {
             return [];
@@ -111,7 +121,17 @@ class ConfigNotaController extends Controller
 
     public function store(Request $request)
     {
+        // NFC-e / CT-e / CSC não são usados pela LUX: aceita vazio
+        $request->merge([
+            'numero_serie_nfce' => $request->numero_serie_nfce ?: 1,
+            'ultimo_numero_nfce' => $request->ultimo_numero_nfce ?: 0,
+            'numero_serie_cte' => $request->numero_serie_cte ?: 1,
+            'ultimo_numero_cte' => $request->ultimo_numero_cte ?: 0,
+            'csc' => $request->csc ?? '',
+            'csc_id' => $request->csc_id ?? '',
+        ]);
         $this->_validate($request);
+        $this->salvarRegime($request);
         $item = ConfigNota::where('empresa_id', $request->empresa_id)
             ->first();
         if (!__valida_objeto($item)) {
@@ -214,6 +234,112 @@ class ConfigNotaController extends Controller
         return redirect()->route('configNF.index');
     }
 
+    private function salvarRegime(Request $request): void
+    {
+        if ($request->regime_tributario === null || $request->regime_tributario === '') {
+            return;
+        }
+        $trib = Tributacao::where('empresa_id', $request->empresa_id)->first();
+        if (!$trib) {
+            Tributacao::create([
+                'empresa_id' => $request->empresa_id,
+                'icms' => 0, 'pis' => 0, 'cofins' => 0, 'ipi' => 0, 'perc_ap_cred' => 0,
+                'ncm_padrao' => '', 'link_nfse' => '',
+                'regime' => (string) (int) $request->regime_tributario,
+            ]);
+            return;
+        }
+        $trib->regime = (string) (int) $request->regime_tributario;
+        $trib->save();
+    }
+
+    /** Checklist do que a NF-e precisa para funcionar (mostrado na tela do emitente). */
+    private function statusNfe($item, $infoCertificado, $tributacao, bool $soapDesativado): array
+    {
+        $itens = [];
+        $add = function (string $nome, bool $ok, string $detalhe) use (&$itens) {
+            $itens[] = compact('nome', 'ok', 'detalhe');
+        };
+
+        $add('PHP do site', true, 'versão ' . PHP_VERSION . ' · ' . (php_ini_loaded_file() ?: 'sem php.ini carregado'));
+        $add('Extensão SOAP do PHP', !$soapDesativado, $soapDesativado ? 'Ative a extensão soap no PHP' : 'ativa');
+        $add('Extensão cURL do PHP', extension_loaded('curl'), extension_loaded('curl') ? 'ativa' : 'DESATIVADA — ative a curl no php.ini acima');
+        $add('Extensão OpenSSL do PHP', extension_loaded('openssl'), extension_loaded('openssl') ? 'ativa' : 'DESATIVADA — ative a openssl no php.ini acima');
+
+        if (!$item) {
+            $add('Emitente', false, 'Cadastre o emitente abaixo');
+            return $itens;
+        }
+
+        $cnpjEmit = preg_replace('/\D/', '', (string) $item->cnpj);
+        if (empty($infoCertificado)) {
+            $add('Certificado digital A1', false, $item->arquivo ? 'Não foi possível ler (senha errada?)' : 'Envie o arquivo .pfx e a senha');
+        } else {
+            $dias = (int) floor((strtotime($infoCertificado['expira_em']) - time()) / 86400);
+            $add('Certificado digital A1', $dias > 0, $dias > 0 ? "válido até {$infoCertificado['expiracao']} ({$dias} dias)" : 'VENCIDO em ' . $infoCertificado['expiracao']);
+            $cnpjCert = $infoCertificado['cnpj'] ?? '';
+            if ($cnpjCert !== '') {
+                $add('CNPJ do certificado = CNPJ do emitente', $cnpjCert === $cnpjEmit, $cnpjCert === $cnpjEmit ? $cnpjCert : "certificado {$cnpjCert} × emitente {$cnpjEmit}");
+            }
+        }
+
+        $cidade = $item->cidade ?? null;
+        $add('Cidade do emitente (código IBGE)', $cidade && strlen((string) $cidade->codigo) === 7, $cidade ? "{$cidade->nome}/{$cidade->uf} · {$cidade->codigo}" : 'Selecione a cidade');
+        $add('Inscrição estadual', preg_replace('/\D/', '', (string) $item->ie) !== '', $item->ie ?: 'Informe a IE');
+
+        $regime = $tributacao ? (Tributacao::regimes()[(int) $tributacao->regime] ?? $tributacao->regime) : null;
+        $add('Regime tributário', $tributacao !== null, $regime ?? 'Selecione abaixo');
+
+        $amb = (int) $item->ambiente === 1 ? 'PRODUÇÃO (nota com valor fiscal)' : 'Homologação (teste, sem valor fiscal)';
+        $add('Ambiente', true, $amb);
+        $add('Série / próxima NF-e', (int) $item->numero_serie_nfe > 0,
+            'série ' . (int) $item->numero_serie_nfe . ' · próxima nº ' . ((int) $item->ultimo_numero_nfe + 1));
+
+        return $itens;
+    }
+
+    /** Testa a comunicação com a SEFAZ usando o certificado (consulta status do serviço). */
+    public function statusSefaz(Request $request)
+    {
+        $config = ConfigNota::where('empresa_id', $request->empresa_id)->first();
+        if (!$config || !$config->arquivo) {
+            return response()->json(['ok' => false, 'msg' => 'Cadastre o emitente e o certificado primeiro.'], 422);
+        }
+        foreach (['soap', 'curl', 'openssl'] as $ext) {
+            if (!extension_loaded($ext)) {
+                return response()->json(['ok' => false, 'msg' => "Extensão {$ext} do PHP desativada (PHP " . PHP_VERSION . ', ' . (php_ini_loaded_file() ?: 'sem php.ini') . ').'], 422);
+            }
+        }
+        try {
+            $nfe = new NFService([
+                'atualizacao' => date('Y-m-d h:i:s'),
+                'tpAmb' => (int) $config->ambiente,
+                'razaosocial' => $config->razao_social,
+                'siglaUF' => $config->cidade->uf,
+                'cnpj' => preg_replace('/\D/', '', $config->cnpj),
+                'schemes' => 'PL_009_V4',
+                'versao' => '4.00',
+                'tokenIBPT' => 'AAAAAAA',
+                'CSC' => $config->csc,
+                'CSCid' => $config->csc_id,
+            ], $config);
+            ob_start();
+            $r = $nfe->consultaStatus((int) $config->ambiente, $config->cidade->uf);
+            $eco = trim((string) ob_get_clean());
+            if (!is_array($r)) {
+                return response()->json(['ok' => false, 'msg' => $eco ?: 'Sem resposta da SEFAZ.'], 502);
+            }
+            $cStat = (string) ($r['cStat'] ?? '');
+            return response()->json([
+                'ok' => $cStat === '107',
+                'msg' => '[' . $cStat . '] ' . ($r['xMotivo'] ?? ''),
+                'ambiente' => (int) $config->ambiente === 1 ? 'Produção' : 'Homologação',
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['ok' => false, 'msg' => $e->getMessage()], 500);
+        }
+    }
+
     private function _validate(Request $request)
     {
         $rules = [
@@ -227,16 +353,11 @@ class ConfigNotaController extends Controller
             'cep' => 'required',
             'email' => 'required',
             'fone' => 'required',
-            'numero_serie_nfe' => 'required',
-            'numero_serie_nfce' => 'required',
-            'numero_serie_cte' => 'required',
+            'numero_serie_nfe' => 'required|integer|min:1|max:999',
+            'ultimo_numero_nfe' => 'required|integer|min:0',
             // 'numero_serie_mdfe' => 'required',
-            'ultimo_numero_nfe' => 'required',
-            'ultimo_numero_nfce' => 'required',
-            'ultimo_numero_cte' => 'required',
             // 'ultimo_numero_mdfe' => 'required',
-            'csc' => 'required',
-            'csc_id' => 'required|max:10',
+            'csc_id' => 'nullable|max:10',
             'cidade_id' => 'required',
         ];
         $message = [

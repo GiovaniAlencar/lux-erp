@@ -144,6 +144,7 @@
                             <tr class="tr_{{ $i }}">
                                 <td class="d-none d-xl-table-cell">
                                     <input readonly type="tel" name="produto_id[]" class="form-control form-control-sm" value="{{ $pid }}">
+                                    <input type="hidden" name="qtd_fiscal[]" value="{{ old('qtd_fiscal.'.$i, '') }}">
                                 </td>
                                 <td>
                                     <input readonly type="text" name="produto_nome[]" class="form-control form-control-sm" value="{{ old('produto_nome.'.$i, '') }}">

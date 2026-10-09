@@ -93,9 +93,9 @@
                             <td>{{ $item->preco_1_anterior !== null ? __moeda($item->preco_1_anterior) : '—' }}</td>
                             <td>{{ __moeda($item->preco_1_novo) }}</td>
                             <td>{{ $item->preco_2_anterior !== null ? __moeda($item->preco_2_anterior) : '—' }}</td>
-                            <td>{{ __moeda($item->preco_2_novo) }}</td>
+                            <td>{{ $item->preco_2_novo !== null ? __moeda($item->preco_2_novo) : '—' }}</td>
                             <td>{{ $item->preco_3_anterior !== null ? __moeda($item->preco_3_anterior) : '—' }}</td>
-                            <td>{{ __moeda($item->preco_3_novo) }}</td>
+                            <td>{{ $item->preco_3_novo !== null ? __moeda($item->preco_3_novo) : '—' }}</td>
                             <td>R$ {{ __moeda($item->valor_linha) }}</td>
                         </tr>
                         @endforeach

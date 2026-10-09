@@ -163,35 +163,45 @@
     </div>
 
     <div class="col-md-2 mt-3">
+        <label class="form-label" for="inp-regime_tributario">Regime tributário</label>
+        <select name="regime_tributario" id="inp-regime_tributario" class="form-select">
+            @foreach(($regimes ?? []) as $k => $lbl)
+            <option value="{{ $k }}" @selected((string) optional($tributacao ?? null)->regime === (string) $k || (!isset($tributacao) && $k === 0))>{{ $lbl }}{{ $k === 0 ? ' Nacional' : '' }}</option>
+            @endforeach
+        </select>
+    </div>
+
+    <div class="col-md-2 mt-3">
         {!! Form::tel('numero_serie_nfe', 'Nº Série NFe')->attrs(['class' => ''])->required() !!}
     </div>
 
     <div class="col-md-2 mt-3">
-        {!! Form::tel('numero_serie_nfce', 'Nº Série NFCe')->attrs(['class' => ''])->required() !!}
+        {!! Form::tel('numero_serie_nfce', 'Nº Série NFCe (opcional)')->attrs(['class' => '']) !!}
     </div>
 
     <div class="col-md-2 mt-3">
-        {!! Form::tel('numero_serie_cte', 'Nº Série CTe')->attrs(['class' => ''])->required() !!}
+        {!! Form::tel('numero_serie_cte', 'Nº Série CTe (opcional)')->attrs(['class' => '']) !!}
     </div>
 
     <div class="col-md-2 mt-3">
         {!! Form::tel('ultimo_numero_nfe', 'Último Nº NFe')->attrs(['class' => ''])->required() !!}
+        <div class="form-text">A próxima nota sai com este nº + 1. Usando junto com outro sistema no mesmo CNPJ? Use uma <strong>série diferente</strong> (ex.: 2) e comece do 0.</div>
     </div>
 
     <div class="col-md-2 mt-3">
-        {!! Form::tel('ultimo_numero_nfce', 'Último Nº NFCe')->attrs(['class' => ''])->required() !!}
+        {!! Form::tel('ultimo_numero_nfce', 'Último Nº NFCe (opcional)')->attrs(['class' => '']) !!}
     </div>
 
     <div class="col-md-2 mt-3">
-        {!! Form::tel('ultimo_numero_cte', 'Último Nº CTe')->attrs(['class' => ''])->required() !!}
+        {!! Form::tel('ultimo_numero_cte', 'Último Nº CTe (opcional)')->attrs(['class' => '']) !!}
     </div>
 
     <div class="col-md-2 mt-3">
-        {!! Form::tel('csc_id', 'CSCID')->attrs(['class' => ''])->required() !!}
+        {!! Form::tel('csc_id', 'CSCID (opcional)')->attrs(['class' => '']) !!}
     </div>
 
     <div class="col-md-4 mt-3">
-        {!! Form::tel('csc', 'CSC')->attrs(['class' => ''])->required() !!}
+        {!! Form::tel('csc', 'CSC (opcional)')->attrs(['class' => '']) !!}
     </div>
 
     <div class="col-md-3 mt-3">
