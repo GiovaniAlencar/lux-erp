@@ -68,7 +68,7 @@ class NotaFiscalEmissor
                 'valor_desconto' => $desconto,
                 'valor_outros' => $outros,
                 'tipo_pagamento' => $this->pagamentoDaVenda($venda),
-                'info_complementar' => 'Pedido #' . $venda->id,
+                'info_complementar' => '',
             ]);
             foreach ($fiscais as $it) {
                 NotaFiscalItem::create([
