@@ -174,10 +174,12 @@
             $info = $('<div class="mt-1 small linha-tabela-preco-info"></div>');
             $tr.find('td').eq(1).append($info);
         }
-        $info.html(
-            '<span class="badge rounded-pill ' + cls + ' badge-tabela-aplicada">' + label + '</span>' +
-            '<span class="text-muted ms-1">Tabela: ' + label + '</span>'
-        );
+        const novoHtml = '<span class="badge rounded-pill ' + cls + ' badge-tabela-aplicada">' + label + '</span>' +
+            '<span class="text-muted ms-1">Tabela: ' + label + '</span>';
+        // só reescreve se mudou: reescrever sempre disparava o observador da tabela em loop (a cada 80 ms)
+        if ($info.html() !== novoHtml) {
+            $info.html(novoHtml);
+        }
     }
 
     function infoPainel(grupo, qtd, modo, tier) {
@@ -267,8 +269,10 @@
             const tier = tierPorGrupo[l.grupo] || 'normal';
             const preco = precoPorTier(l.$tr, tier);
             const sub = preco * l.qtd;
-            l.$tr.find('.value_unit_row').val(convertFloatToMoeda(preco));
-            l.$tr.find('.subtotal-item').val(convertFloatToMoeda(sub));
+            const vPreco = convertFloatToMoeda(preco), vSub = convertFloatToMoeda(sub);
+            const $vu = l.$tr.find('.value_unit_row'), $st = l.$tr.find('.subtotal-item');
+            if ($vu.val() !== vPreco) $vu.val(vPreco);
+            if ($st.val() !== vSub) $st.val(vSub);
             atualizarBadgeLinha(l.$tr, tier);
         });
 

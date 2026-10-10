@@ -57,6 +57,9 @@
     function fmtQ(n) { return (Math.round(n * 1000) / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 3 }); }
     function esc(t) { return String(t || '').replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
+    /** escreve no input só se mudou: em input hidden, .value altera o atributo e dispara os MutationObservers */
+    function setVal(inp, v) { if (inp.value !== v) inp.value = v; }
+
     /** garante o input hidden qtd_fiscal[] na linha (um por linha, na mesma ordem dos demais arrays) */
     function inputQf(tr) {
         var inp = tr.querySelector('input[name="qtd_fiscal[]"]');
@@ -101,7 +104,7 @@
             var qty = qtyEl ? num(qtyEl.value) : 0;
             var unit = qty > 0 ? subtotal / qty : 0;
 
-            if (!(id in SALDOS)) { inp.value = '0'; naoFiscal += subtotal; return; }
+            if (!(id in SALDOS)) { setVal(inp, '0'); naoFiscal += subtotal; return; }
             decisaoInicial(tr, qty, inp);
 
             var dec = tr.dataset.luxDecisao || '';
@@ -113,7 +116,7 @@
             else { qf = 0; pend = true; }
             resto[id] = Math.max(0, disp - qf);
 
-            inp.value = qf.toFixed(3);
+            setVal(inp, qf.toFixed(3));
             var vfLinha = Math.round(unit * qf * 100) / 100;
             fiscal += vfLinha;
             naoFiscal += subtotal - vfLinha;
@@ -269,6 +272,8 @@
     }, true);
 
     document.addEventListener('DOMContentLoaded', function () {
+        if (window.__luxResumoIniciado) return;
+        window.__luxResumoIniciado = true;
         if (window.jQuery) {
             jQuery(document).on('change', '#inp-cliente_id', carregarDocCliente);
         }
@@ -279,7 +284,14 @@
         if (inpDoc && !inpDoc.value) carregarDocCliente();
 
         var tbody = document.querySelector('.table-itens tbody');
-        if (tbody) new MutationObserver(calcular).observe(tbody, { childList: true, subtree: true, attributes: true, attributeFilter: ['value'] });
+        if (tbody) new MutationObserver(function (muts) {
+            // ignora mudanças causadas pelos próprios campos qtd_fiscal (evita loop)
+            var relevante = muts.some(function (m) {
+                if (m.type !== 'attributes') return true;
+                return !(m.target && m.target.name === 'qtd_fiscal[]');
+            });
+            if (relevante) calcular();
+        }).observe(tbody, { childList: true, subtree: true, attributes: true, attributeFilter: ['value'] });
         document.addEventListener('input', function (e) {
             if (e.target.matches('.desconto, .acrescimo, .frete, .qtd_row, .value_unit_row, .subtotal-item')) calcular();
         });

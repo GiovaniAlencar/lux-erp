@@ -451,8 +451,12 @@ $('.btn-add-item').click(() => {
 
         $.get(path_url + "api/vendas/linhaProdutoVenda", dataRequest)
         .done((e) => {
-            if (e.includes("alert(")) {
-                // eval(e); // alerta e para
+            if (typeof e === 'string' && e.includes("alert(")) {
+                // o servidor devolve um alert('...') (ex.: estoque insuficiente): mostra a mensagem
+                const m = e.match(/alert\((['"])([\s\S]*)\1\)/);
+                const msg = m ? m[2] : 'Não foi possível adicionar o produto.';
+                $('body').removeClass('loading');
+                swal("Atenção", msg, "warning");
             } else {
                 $('.table-itens tbody .empty-state').remove();
                 $('.table-itens tbody').append(e);
@@ -472,6 +476,8 @@ $('.btn-add-item').click(() => {
         })
         .fail((e) => {
             console.log(e);
+            $('body').removeClass('loading');
+            swal("Erro", "Falha ao adicionar o produto (HTTP " + (e && e.status) + ").", "error");
         })
     } else {
         swal("Atenção", "Informe corretamente os campos para continuar!", "warning")
