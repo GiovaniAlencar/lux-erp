@@ -2,9 +2,7 @@
     use App\Helpers\PrecoCategoriaVenda;
     $product = $productItem->produto;
     $grupoPreco = $product ? PrecoCategoriaVenda::grupoPorCategoriaId((int) $product->categoria_id) : null;
-    $precoNormal = (float) ($product->valor_venda ?? 0);
-    $precoAtacado1 = $product && $product->preco_2 !== null ? (float) $product->preco_2 : $precoNormal;
-    $precoAtacado2 = $product && $product->preco_3 !== null ? (float) $product->preco_3 : ($product && $product->preco_2 !== null ? (float) $product->preco_2 : $precoNormal);
+    [$precoNormal, $precoAtacado1, $precoAtacado2] = $product ? PrecoCategoriaVenda::precosDoProduto($product) : [0, 0, 0];
     $tierLabel = 'Normal';
     $badgeClass = PrecoCategoriaVenda::badgeClassTier(PrecoCategoriaVenda::TIER_NORMAL);
 @endphp

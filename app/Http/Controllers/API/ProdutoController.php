@@ -157,9 +157,10 @@ class ProdutoController extends Controller
 
         if ($item) {
             $item->grupo_preco = \App\Helpers\PrecoCategoriaVenda::grupoPorCategoriaId((int) $item->categoria_id);
-            $item->preco_normal = (float) ($item->valor_venda ?? 0);
-            $item->preco_atacado_1 = $item->preco_2 !== null ? (float) $item->preco_2 : $item->preco_normal;
-            $item->preco_atacado_2 = $item->preco_3 !== null ? (float) $item->preco_3 : $item->preco_atacado_1;
+            [$pn, $pa1, $pa2] = \App\Helpers\PrecoCategoriaVenda::precosDoProduto($item);
+            $item->preco_normal = $pn;
+            $item->preco_atacado_1 = $pa1;
+            $item->preco_atacado_2 = $pa2;
         }
 
         return response()->json($item, 200);

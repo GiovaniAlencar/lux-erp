@@ -6,7 +6,7 @@
 
     const GRUPOS = {
         arabes: {
-            label: 'Árabes / Francês',
+            label: 'Perfumes (exceto miniaturas)',
             faixas: [
                 { min: 1, max: 9, tier: 'normal' },
                 { min: 10, max: 19, tier: 'atacado_1' },
@@ -76,9 +76,14 @@
         });
     }
 
+    // Miniaturas têm faixa própria; qualquer outro produto conta na faixa 10/20.
+    function grupoPadrao() {
+        return config().arabes ? 'arabes' : '';
+    }
+
     function grupoPorCategoriaId(catId) {
         const id = parseInt(catId, 10);
-        if (!id) return '';
+        if (!id) return grupoPadrao();
         const cfg = config();
         for (let i = 0; i < Object.keys(cfg).length; i++) {
             const key = Object.keys(cfg)[i];
@@ -89,7 +94,7 @@
                 }
             }
         }
-        return '';
+        return grupoPadrao();
     }
 
     function grupoDaLinha($tr) {

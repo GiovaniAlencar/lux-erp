@@ -24,7 +24,7 @@ class PrecoCategoriaVenda
     {
         return [
             self::GRUPO_ARABES => [
-                'label' => 'Árabes / Francês',
+                'label' => 'Perfumes (exceto miniaturas)',
                 'nomes_categoria' => [
                     'arabes', 'árabes', 'arabe', 'árabe',
                     'frances', 'francês', 'francesa', 'france',
@@ -88,7 +88,17 @@ class PrecoCategoriaVenda
         return null;
     }
 
+    /**
+     * Grupo de preço do produto. Miniaturas têm faixa própria; todo o resto
+     * (árabes, francês, nacionais, splash, sem categoria...) conta junto na
+     * faixa de 10/20 unidades, tendo preço 2/3 cadastrado ou não.
+     */
     public static function grupoPorCategoriaId(int $categoriaId, ?Collection $categorias = null): ?string
+    {
+        return self::grupoEspecificoPorCategoriaId($categoriaId, $categorias) ?? self::GRUPO_ARABES;
+    }
+
+    private static function grupoEspecificoPorCategoriaId(int $categoriaId, ?Collection $categorias = null): ?string
     {
         if ($categoriaId <= 0) {
             return null;
@@ -192,18 +202,31 @@ class PrecoCategoriaVenda
 
     public static function precoPorTier(Produto $produto, string $tier): float
     {
-        $normal = (float) ($produto->valor_venda ?? 0);
-        $p2 = $produto->preco_2 !== null ? (float) $produto->preco_2 : null;
-        $p3 = $produto->preco_3 !== null ? (float) $produto->preco_3 : null;
+        [$normal, $a1, $a2] = self::precosDoProduto($produto);
 
         if ($tier === self::TIER_ATACADO_2) {
-            return $p3 ?? $p2 ?? $normal;
+            return $a2;
         }
         if ($tier === self::TIER_ATACADO_1) {
-            return $p2 ?? $normal;
+            return $a1;
         }
 
         return $normal;
+    }
+
+    /**
+     * [normal, atacado 1, atacado 2]. Preço 2/3 vazio ou zerado cai para o
+     * anterior (produto com preço único fica com o mesmo valor nas três faixas).
+     */
+    public static function precosDoProduto($produto): array
+    {
+        $normal = (float) ($produto->valor_venda ?? 0);
+        $p2 = (float) ($produto->preco_2 ?? 0);
+        $p3 = (float) ($produto->preco_3 ?? 0);
+        $a1 = $p2 > 0 ? $p2 : $normal;
+        $a2 = $p3 > 0 ? $p3 : $a1;
+
+        return [$normal, $a1, $a2];
     }
 
     public static function labelTier(string $tier): string
