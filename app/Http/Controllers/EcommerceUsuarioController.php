@@ -55,6 +55,7 @@ class EcommerceUsuarioController extends Controller
         }
 
         try {
+            $primeiraAprovacao = $item->status !== 'active';
             $item->erp_cliente_id = $cliente->id;
             $item->status = 'active';
             $item->approved_at = now();
@@ -63,6 +64,19 @@ class EcommerceUsuarioController extends Controller
             $item->rejection_reason = null;
             $item->admin_notes = $request->admin_notes ?: $item->admin_notes;
             $item->save();
+            // leva o CPF/CNPJ do cadastro do site para o cliente, se lá estiver vazio/inválido
+            if ($item->documento && !\App\Helpers\Documento::valido($cliente->cpf_cnpj)) {
+                $cliente->cpf_cnpj = $item->documento;
+                $cliente->save();
+            }
+            if ($primeiraAprovacao) {
+                \App\Services\Notificacao::registrar('cadastro_aprovado', [
+                    'ecommerce_user_id' => $item->id,
+                    'cliente_id' => $cliente->id,
+                    'email' => $item->email,
+                    'telefone' => $item->phone,
+                ], ['nome' => $item->name]);
+            }
             session()->flash('flash_sucesso', 'Usuário do site aprovado e vinculado ao cliente #' . $cliente->id);
         } catch (\Exception $e) {
             session()->flash('flash_erro', 'Erro ao aprovar: ' . $e->getMessage());
@@ -147,9 +161,9 @@ class EcommerceUsuarioController extends Controller
                 $phone = preg_replace('/\D/', '', $item->phone);
                 $cliente = Cliente::create([
                     'empresa_id' => $empresaId,
-                    'razao_social' => $item->name,
+                    'razao_social' => $item->razao_social ?: $item->name,
                     'nome_fantasia' => $item->name,
-                    'cpf_cnpj' => $request->cpf_cnpj ?: '000.000.000-00',
+                    'cpf_cnpj' => $request->cpf_cnpj ?: ($item->documento ?: '000.000.000-00'),
                     'rua' => $request->rua ?: 'A definir',
                     'numero' => $request->numero ?: 'S/N',
                     'bairro' => $request->bairro ?: 'A definir',
@@ -223,6 +237,9 @@ class EcommerceUsuarioController extends Controller
                 }
                 if ($email) {
                     $w->orWhere('email', $email);
+                }
+                if ($user->documento) {
+                    $w->orWhere('cpf_cnpj', $user->documento);
                 }
                 $w->orWhere('razao_social', 'LIKE', '%' . $user->name . '%');
             })

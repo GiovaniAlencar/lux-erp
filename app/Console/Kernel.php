@@ -16,6 +16,7 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule)
     {
         $schedule->command('ecommerce:expire-orders')->everyFifteenMinutes();
+        $schedule->command('notificacoes:enviar')->everyMinute()->withoutOverlapping(10);
     }
 
     /**

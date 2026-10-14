@@ -495,6 +495,20 @@ Route::middleware([
         Route::post('/{id}/criar-cliente', 'EcommerceUsuarioController@criarCliente')->name('ecommerce-usuarios.criar-cliente');
     });
 
+    Route::group(['prefix' => 'notificacoes-site'], function () {
+        Route::get('/', 'NotificacaoController@index')->name('notificacoes-site.index');
+        Route::post('/teste', 'NotificacaoController@teste')->name('notificacoes-site.teste');
+        Route::post('/{id}/reenviar', 'NotificacaoController@reenviar')->name('notificacoes-site.reenviar');
+        Route::get('/modelo/{evento}', 'NotificacaoController@preview')->name('notificacoes-site.preview');
+    });
+
+    Route::group(['prefix' => 'vitrine-site'], function () {
+        Route::get('/', 'VitrineSiteController@index')->name('vitrine-site.index');
+        Route::post('/adicionar', 'VitrineSiteController@adicionar')->name('vitrine-site.adicionar');
+        Route::post('/atualizar', 'VitrineSiteController@atualizar')->name('vitrine-site.atualizar');
+        Route::get('/{id}/remover', 'VitrineSiteController@remover')->name('vitrine-site.remover');
+    });
+
     Route::group(['prefix' => 'ecommerce-frete'], function () {
         Route::get('/', 'EcommerceFreteController@index')->name('ecommerce-frete.index');
         Route::post('/', 'EcommerceFreteController@store')->name('ecommerce-frete.store');

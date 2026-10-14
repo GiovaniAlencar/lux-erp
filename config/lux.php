@@ -35,4 +35,12 @@ return [
             'cidade' => env('LUX_PIX_NAO_FISCAL_CIDADE', ''),
         ],
     ],
+
+    // E-mails e notificações do site enviados pelo ERP
+    'site_url' => rtrim(env('LUX_SITE_URL', 'https://luxatacado.com.br'), '/'),
+    'whatsapp' => env('LUX_WHATSAPP', '5583999459629'),
+    'whatsapp_exibir' => env('LUX_WHATSAPP_EXIBIR', '(83) 99945-9629'),
+    'instagram' => env('LUX_INSTAGRAM', 'luxperfumesdistribuidora'),
+    // desliga o envio de e-mails da fila sem parar o resto (NOTIFICACOES_EMAIL=false)
+    'notificacoes_email' => (bool) env('NOTIFICACOES_EMAIL', true),
 ];

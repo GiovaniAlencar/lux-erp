@@ -99,6 +99,14 @@ class Menu
 					[
 						'nome' => 'Frete por Bairro',
 						'rota' => route('ecommerce-frete.index')
+					],
+					[
+						'nome' => 'Vitrine do Site',
+						'rota' => route('vitrine-site.index')
+					],
+					[
+						'nome' => 'Notificações do Site',
+						'rota' => route('notificacoes-site.index')
 					]
 				]
 			],

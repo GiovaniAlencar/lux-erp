@@ -18,7 +18,7 @@ class Produto extends Model
 		'categoria_id',
 		'cor',
 		'valor_venda',
-		'fiscal',
+		'fiscal', 'destaque_site', 'destaque_ordem', 'destaque_ate', 'ocultar_site',
 		'estoque_fiscal',
 		'custo_fiscal',
 		'preco_2',

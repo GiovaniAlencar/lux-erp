@@ -21,6 +21,14 @@ class EcommerceUser extends Model
         'rejected_at',
         'rejection_reason',
         'last_login',
+        'tipo_pessoa',
+        'documento',
+        'razao_social',
+        'aceita_email',
+        'aceita_whatsapp',
+        'consentimento_em',
+        'consentimento_ip',
+        'email_verificado_em',
     ];
 
     protected $hidden = ['password'];
@@ -29,6 +37,10 @@ class EcommerceUser extends Model
         'approved_at' => 'datetime',
         'rejected_at' => 'datetime',
         'last_login' => 'datetime',
+        'aceita_email' => 'boolean',
+        'aceita_whatsapp' => 'boolean',
+        'consentimento_em' => 'datetime',
+        'email_verificado_em' => 'datetime',
     ];
 
     public function cliente()

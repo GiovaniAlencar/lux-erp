@@ -301,6 +301,26 @@ $trib = $tributacao ?? null;
         @endisset
     </div>
 
+    {{-- Vitrine do site --}}
+    <div class="row g-3 mt-1">
+        <div class="col-md-4">
+            {!! Form::select('destaque_site', 'Destacar no site', [0 => 'Não', 1 => 'Sim'])->attrs(['class' => 'form-select']) !!}
+            <div class="form-text">Aparece na vitrine "Destaques" da home (se tiver estoque).</div>
+        </div>
+        <div class="col-md-4">
+            {!! Form::tel('destaque_ordem', 'Ordem na vitrine')->attrs(['class' => 'form-control', 'min' => 0])->value(isset($item) ? (int) $item->destaque_ordem : 0) !!}
+            <div class="form-text">Menor aparece primeiro.</div>
+        </div>
+        <div class="col-md-4">
+            {!! Form::date('destaque_ate', 'Destacar até (opcional)')->attrs(['class' => 'form-control'])->value(isset($item) && $item->destaque_ate ? \Carbon\Carbon::parse($item->destaque_ate)->format('Y-m-d') : '') !!}
+            <div class="form-text">Depois dessa data sai da vitrine sozinho.</div>
+        </div>
+        <div class="col-md-4">
+            {!! Form::select('ocultar_site', 'Ocultar do site', [0 => 'Não', 1 => 'Sim'])->attrs(['class' => 'form-select']) !!}
+            <div class="form-text">Use para descontinuados: não aparece nem como "esgotado".</div>
+        </div>
+    </div>
+
     @include('produtos.partials.dados_fiscais')
 
     {{-- Precificação --}}

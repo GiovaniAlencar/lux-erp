@@ -12,6 +12,20 @@ class Estoque extends Model
         'produto_id', 'quantidade', 'valor_compra', 'validade', 'empresa_id', 'filial_id'
     ];
 
+    protected static function booted()
+    {
+        // estoque voltou (de zero para positivo): avisa quem pediu "Avise-me" no site
+        static::saved(function (Estoque $e) {
+            $antes = (float) $e->getOriginal('quantidade');
+            $voltou = $e->wasRecentlyCreated
+                ? (float) $e->quantidade > 0
+                : ($e->wasChanged('quantidade') && $antes <= 0 && (float) $e->quantidade > 0);
+            if ($voltou) {
+                \App\Services\AvisoReposicao::produtoVoltou((int) $e->produto_id);
+            }
+        });
+    }
+
     public function filial()
     {
         return $this->belongsTo(Filial::class, 'filial_id');

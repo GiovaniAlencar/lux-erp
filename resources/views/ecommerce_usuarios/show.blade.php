@@ -7,6 +7,20 @@
 				<div>
 					<h5 class="mb-1">{{ $item->name }}</h5>
 					<div class="text-muted">{{ $item->email }} · {{ $item->phone }}</div>
+					@if($item->documento)
+						<div class="mt-1">
+							<b>{{ $item->tipo_pessoa === 'PJ' ? 'CNPJ' : 'CPF' }}:</b> {{ $item->documento }}
+							@if($item->razao_social) · {{ $item->razao_social }} @endif
+						</div>
+					@else
+						<div class="mt-1 text-warning small">Sem CPF/CNPJ (cadastro antigo — será pedido no próximo pedido)</div>
+					@endif
+					<div class="small text-muted mt-1">
+						Novidades:
+						WhatsApp {!! $item->aceita_whatsapp ? '<span class="text-success">sim</span>' : 'não' !!} ·
+						E-mail {!! $item->aceita_email ? '<span class="text-success">sim</span>' : 'não' !!}
+						@if($item->consentimento_em) <span title="IP {{ $item->consentimento_ip }}">(aceite em {{ \Carbon\Carbon::parse($item->consentimento_em)->format('d/m/Y H:i') }})</span> @endif
+					</div>
 					<div class="mt-2">
 						<span class="badge bg-{{ $item->status==='pending'?'warning':($item->status==='active'?'success':($item->status==='rejected'?'danger':'secondary')) }}">
 							{{ $statusLabels[$item->status] ?? $item->status }}
@@ -72,7 +86,7 @@
 						@csrf
 						<div class="row">
 							<div class="col-md-6 mb-2">
-								<input type="text" name="cpf_cnpj" class="form-control" placeholder="CPF/CNPJ (opcional)">
+								<input type="text" name="cpf_cnpj" class="form-control" placeholder="CPF/CNPJ (opcional)" value="{{ $item->documento }}">
 							</div>
 							<div class="col-md-6 mb-2">
 								<input type="text" name="cep" class="form-control" placeholder="CEP">

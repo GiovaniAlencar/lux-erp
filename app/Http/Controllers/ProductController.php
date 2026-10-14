@@ -291,6 +291,10 @@ class ProductController extends Controller
                     'preco_3' => ($request->preco_3 ?? '') !== '' ? round((float) __convert_value_bd($request->preco_3), 2) : null,
                     'reajuste_automatico' => 1,
                     'fiscal' => $request->fiscal ? 1 : 0,
+                    'destaque_site' => $request->destaque_site ? 1 : 0,
+                    'destaque_ordem' => max(0, (int) $request->destaque_ordem),
+                    'destaque_ate' => $request->destaque_ate ?: null,
+                    'ocultar_site' => $request->ocultar_site ? 1 : 0,
                     'referencia' => $request->referencia ?? '',
                     'estoque_inicial' => $request->estoque_inicial ?? 0,
                     'estoque_minimo' => $request->estoque_minimo ?? 0,
@@ -417,6 +421,22 @@ class ProductController extends Controller
         $request->merge(\App\Support\ProdutoFiscal::normalizar($request->only([
             'NCM', 'CEST', 'CFOP_saida_estadual', 'CFOP_saida_inter_estadual',
         ])));
+
+        // Campos fiscais que o banco não aceita vazios (produto não fiscal deixa em branco):
+        // usa o padrão da Configuração da NF-e, ou os valores do Simples Nacional.
+        $cfgNota = \App\Models\ConfigNota::where('empresa_id', request()->empresa_id)->first();
+        $padroes = [
+            'CST_CSOSN' => $cfgNota->CST_CSOSN_padrao ?? '102',
+            'CST_PIS' => $cfgNota->CST_PIS_padrao ?? '49',
+            'CST_COFINS' => $cfgNota->CST_COFINS_padrao ?? '49',
+            'CST_IPI' => $cfgNota->CST_IPI_padrao ?? '99',
+            'origem' => '0',
+        ];
+        foreach ($padroes as $campo => $padrao) {
+            if (trim((string) $request->input($campo, '')) === '' && trim((string) $padrao) !== '') {
+                $request->merge([$campo => $padrao]);
+            }
+        }
         if ((int) $request->input('fiscal', 0) === 1) {
             $dados = $request->all();
             $dados['unidade_venda'] = $dados['unidade_venda'] ?? 'UN';
@@ -452,6 +472,10 @@ class ProductController extends Controller
                 'valor_compra' => round((float) __convert_value_bd($request->valor_compra), 2),
                 'reajuste_automatico' => 1,
                 'fiscal' => $request->fiscal ? 1 : 0,
+                'destaque_site' => $request->destaque_site ? 1 : 0,
+                'destaque_ordem' => max(0, (int) $request->destaque_ordem),
+                'destaque_ate' => $request->destaque_ate ?: null,
+                'ocultar_site' => $request->ocultar_site ? 1 : 0,
                 'referencia' => $request->referencia ?? '',
                 'estoque_inicial' => $request->estoque_inicial ?? 0,
                 'estoque_minimo' => $request->estoque_minimo ?? 0,

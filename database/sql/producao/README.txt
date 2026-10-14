@@ -17,6 +17,10 @@ Ordem sugerida:
 14) 18_create_notas_fiscais.sql (emissão de NF-e da parte fiscal pelo ERP)
 15) 19_estoque_fiscal.sql (saldo de estoque com nota; requer 17 aplicado antes)
 16) 20_custo_fiscal.sql (custo médio das unidades com nota; requer 19)
+17) 21_site_cadastro_documento_notificacoes.sql (CPF/CNPJ e consentimento no cadastro do site + fila de notificações)
+18) 22_produtos_destaque_site.sql (vitrine "Destaques" do site, escolhida no ERP)
+19) 23_site_esgotados_avise_me.sql (esgotados no site + "Avise-me quando chegar"; requer 21 e 22)
+20) 24_site_recuperar_senha.sql ("Esqueci minha senha" do site; tokens guardados só como hash)
 
 Deploy completo (SQL + lista de arquivos FTP): ver DEPLOY_JUN2026.txt
 
