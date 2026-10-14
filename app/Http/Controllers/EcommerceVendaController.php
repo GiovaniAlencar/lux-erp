@@ -18,6 +18,9 @@ use App\Helpers\EcommerceSync;
 
 class EcommerceVendaController extends Controller
 {
+    /** Itens fiscais que não couberam no saldo fiscal (foram para a conta 2). */
+    private array $avisosConta2 = [];
+
     public function index(Request $request)
     {
         $statusFilter = $request->status;
@@ -172,8 +175,24 @@ class EcommerceVendaController extends Controller
                 ]);
 
                 $natureza = NaturezaOperacao::find($naturezaId);
+                // Conta 1 (fiscal) x conta 2: produto fiscal vai para a conta 1 até o
+                // saldo fiscal disponível; o que passar do saldo fica na conta 2.
+                $saldoFiscal = [];
                 foreach ($itensIncluidos as $it) {
                     $product = Produto::find($it->product_id);
+                    $qtdItem = (float)$it->quantity;
+                    $qtdFiscal = 0.0;
+                    if ($product && (int)$product->fiscal) {
+                        $pidF = (int)$product->id;
+                        if (!array_key_exists($pidF, $saldoFiscal)) {
+                            $saldoFiscal[$pidF] = max(0, (float)$product->estoque_fiscal);
+                        }
+                        $qtdFiscal = round(min($qtdItem, $saldoFiscal[$pidF]), 3);
+                        $saldoFiscal[$pidF] -= $qtdFiscal;
+                        if ($qtdFiscal + 0.0005 < $qtdItem) {
+                            $this->avisosConta2[] = $product->nome . ': ' . ($qtdItem - $qtdFiscal) . ' un. na conta 2 (sem saldo fiscal)';
+                        }
+                    }
                     $cfop = 0;
                     if ($product && $natureza) {
                         $cfop = $natureza->sobrescreve_cfop
@@ -184,6 +203,7 @@ class EcommerceVendaController extends Controller
                         'venda_id' => $venda->id,
                         'produto_id' => (int)$it->product_id,
                         'quantidade' => (float)$it->quantity,
+                        'qtd_fiscal' => $qtdFiscal,
                         'valor' => (float)$it->product_price,
                         'valor_custo' => $product ? ($product->valor_compra ?? 0) : 0,
                         'cfop' => $cfop ?: 0,
@@ -210,6 +230,8 @@ class EcommerceVendaController extends Controller
                         }
                     }
                 }
+
+                (new \App\Services\EstoqueFiscal())->consumirVenda($venda->id, ItemVenda::where('venda_id', $venda->id)->get());
 
                 EcommerceStockReservation::where('order_id', $order->id)
                     ->where('status', 'active')
@@ -261,6 +283,15 @@ class EcommerceVendaController extends Controller
                 $msgSucesso .= ' ' . $itensRemovidos->count() . ' item(ns) indisponível(is) foram removidos e não entraram na venda.';
             }
             session()->flash('flash_sucesso', $msgSucesso);
+
+            $avisos = $this->avisosConta2;
+            $temFiscal = ItemVenda::where('venda_id', $venda->id)->where('qtd_fiscal', '>', 0)->exists();
+            if ($temFiscal && !\App\Helpers\Documento::valido($cliente->fresh()->cpf_cnpj)) {
+                $avisos[] = 'o cliente está sem CPF/CNPJ válido; preencha antes de emitir a NF';
+            }
+            if ($avisos) {
+                session()->flash('flash_warning', 'Atenção: ' . implode('; ', $avisos) . '.');
+            }
             return redirect()->route('vendas.show', $venda->id);
         } catch (\Exception $e) {
             session()->flash('flash_erro', 'Erro ao confirmar: ' . $e->getMessage());
