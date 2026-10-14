@@ -22,6 +22,7 @@ class Estoque extends Model
                 : ($e->wasChanged('quantidade') && $antes <= 0 && (float) $e->quantidade > 0);
             if ($voltou) {
                 \App\Services\AvisoReposicao::produtoVoltou((int) $e->produto_id);
+                \App\Services\AvisoReposicao::marcarReposto((int) $e->produto_id, $e->wasRecentlyCreated);
             }
         });
     }

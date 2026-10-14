@@ -46,4 +46,27 @@ class AvisoReposicao
             \Log::warning('AvisoReposicao: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Vitrine "Reposições" do site: guarda quando o produto voltou ao estoque.
+     * Produto recém-cadastrado não conta como reposição (aparece em "Novidades").
+     */
+    public static function marcarReposto(int $produtoId, bool $estoqueNovo): void
+    {
+        try {
+            static $temColuna = null;
+            $temColuna ??= Schema::hasColumn('produtos', 'reposto_em');
+            if (!$temColuna) {
+                return;
+            }
+            $q = DB::table('produtos')->where('id', $produtoId);
+            if ($estoqueNovo) {
+                // linha de estoque criada agora: só é reposição se o produto já existia antes
+                $q->where('created_at', '<', now()->subDays(2));
+            }
+            $q->update(['reposto_em' => now()]);
+        } catch (\Throwable $e) {
+            \Log::warning('AvisoReposicao::marcarReposto: ' . $e->getMessage());
+        }
+    }
 }

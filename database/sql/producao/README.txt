@@ -21,6 +21,7 @@ Ordem sugerida:
 18) 22_produtos_destaque_site.sql (vitrine "Destaques" do site, escolhida no ERP)
 19) 23_site_esgotados_avise_me.sql (esgotados no site + "Avise-me quando chegar"; requer 21 e 22)
 20) 24_site_recuperar_senha.sql ("Esqueci minha senha" do site; tokens guardados só como hash)
+21) 25_produtos_reposto_em.sql (vitrine "Reposições" do site; requer 23)
 
 Deploy completo (SQL + lista de arquivos FTP): ver DEPLOY_JUN2026.txt
 
