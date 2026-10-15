@@ -63,4 +63,27 @@ class EcommerceUser extends Model
             'inactive' => 'Inativo',
         ];
     }
+
+    /**
+     * Cadastro aprovado (pendente/recusado → ativo), por qualquer caminho do ERP
+     * ("Aprovar e vincular" ou "Criar cliente e aprovar"): e-mail de boas-vindas.
+     * Reativar um bloqueado não reenvia.
+     */
+    protected static function booted()
+    {
+        static::saved(function (EcommerceUser $u) {
+            if (!$u->wasChanged('status') || $u->status !== 'active') {
+                return;
+            }
+            if (!in_array($u->getOriginal('status'), ['pending', 'rejected', null, ''], true)) {
+                return;
+            }
+            \App\Services\Notificacao::registrar('cadastro_aprovado', [
+                'ecommerce_user_id' => $u->id,
+                'cliente_id' => $u->erp_cliente_id,
+                'email' => $u->email,
+                'telefone' => $u->phone,
+            ], ['nome' => $u->name]);
+        });
+    }
 }

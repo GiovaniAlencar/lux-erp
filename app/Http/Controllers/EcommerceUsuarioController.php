@@ -55,7 +55,6 @@ class EcommerceUsuarioController extends Controller
         }
 
         try {
-            $primeiraAprovacao = $item->status !== 'active';
             $item->erp_cliente_id = $cliente->id;
             $item->status = 'active';
             $item->approved_at = now();
@@ -68,14 +67,6 @@ class EcommerceUsuarioController extends Controller
             if ($item->documento && !\App\Helpers\Documento::valido($cliente->cpf_cnpj)) {
                 $cliente->cpf_cnpj = $item->documento;
                 $cliente->save();
-            }
-            if ($primeiraAprovacao) {
-                \App\Services\Notificacao::registrar('cadastro_aprovado', [
-                    'ecommerce_user_id' => $item->id,
-                    'cliente_id' => $cliente->id,
-                    'email' => $item->email,
-                    'telefone' => $item->phone,
-                ], ['nome' => $item->name]);
             }
             session()->flash('flash_sucesso', 'Usuário do site aprovado e vinculado ao cliente #' . $cliente->id);
         } catch (\Exception $e) {
