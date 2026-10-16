@@ -17,398 +17,113 @@ class Menu
 			$tributacao = Tributacao::where('empresa_id', $empresa_id)
 				->first();
 		}
+		// Menu organizado por área de trabalho. 'secao' imprime um rótulo antes do grupo.
+		// As permissões continuam pela URL de cada item (perfil de acesso não muda).
+		$item = fn ($nome, $rota) => ['nome' => $nome, 'rota' => route($rota)];
 		$this->menu = [
 			[
-				'titulo' => 'Cadastros',
-				'icone' => 'bx bx-layer',
+				'secao' => 'Operação',
+				'titulo' => 'Vendas',
+				'icone' => 'bx bx-cart',
 				'subs' => [
-					[
-						'nome' => 'Categorias',
-						'rota' => route('categorias.index')
-					],
-					[
-						'nome' => 'Marcas',
-						'rota' => route('marcas.index')
-					],
-					[
-						'nome' => 'Produtos',
-						'rota' => route('produtos.index')
-					],
-					[
-						'nome' => 'Importar dados fiscais (XML)',
-						'rota' => route('produtos-fiscal-xml.index')
-					],
-					[
-						'nome' => 'Clientes',
-						'rota' => route('clientes.index')
-					],
-					[
-						'nome' => 'Grupos de Cliente',
-						'rota' => route('gruposCliente.index')
-					],
-					// [
-					// 	'nome' => 'Assessor',
-					// 	'rota' => route('acessores.index')
-					// ],
-
-					[
-						'nome' => 'Fornecedores',
-						'rota' => route('fornecedores.index')
-					],
-					// [
-					// 	'nome' => 'Transportadoras',
-					// 	'rota' => route('transportadoras.index')
-					// ],
-					// [
-					// 	'nome' => 'Categorias de Serviços',
-					// 	'rota' => route('categoria-servico.index')
-					// ],
-					// [
-					// 	'nome' => 'Serviços',
-					// 	'rota' => route('servicos.index')
-					// ],
-					[
-						'nome' => 'Lista de Preços',
-						'rota' => route('listaDePrecos.index')
-					],
-					[
-						'nome' => 'Categorias de Contas',
-						'rota' => route('categoria-conta.index')
-					],
-					// [
-					// 	'nome' => 'Veículos',
-					// 	'rota' => route('veiculos.index')
-					// ],
-					[
-						'nome' => 'Contas bancárias',
-						'rota' => route('contaBancaria.index')
-					],
-
-					[
-						'nome' => 'Formas de pagamento',
-						'rota' => route('formasPagamento.index')
-					],
-					[
-						'nome' => 'Usuários',
-						'rota' => route('usuarios.index')
-					],
-					[
-						'nome' => 'Usuários Site',
-						'rota' => route('ecommerce-usuarios.index')
-					],
-					[
-						'nome' => 'Frete por Bairro',
-						'rota' => route('ecommerce-frete.index')
-					],
-					[
-						'nome' => 'Vitrine do Site',
-						'rota' => route('vitrine-site.index')
-					],
-					[
-						'nome' => 'Notificações do Site',
-						'rota' => route('notificacoes-site.index')
-					]
+					$item('Nova venda', 'vendas.create'),
+					$item('Lista de vendas', 'vendas.index'),
+					$item('Rotas de entrega', 'rotas-entrega.index'),
+					$item('Orçamentos', 'orcamentoVenda.index'),
+					$item('Pré-venda', 'preVenda.index'),
+					$item('Promoções', 'promocoes.index'),
 				]
 			],
 			[
-				'titulo' => 'Entradas',
-				'icone' => 'bx bx-import',
+				'titulo' => 'Produtos',
+				'icone' => 'bx bx-package',
 				'subs' => [
-					// [
-					// 	'nome' => 'Compra Fiscal',
-					// 	'rota' => route('compraFiscal.index')
-					// ],
-					[
-						'nome' => 'Pedido de Compra',
-						'rota' => route('compraManual.index')
-					],
-					[
-						'nome' => 'Compras',
-						'rota' => route('compras.index')
-					],
-					[
-						'nome' => 'Cotação',
-						'rota' => route('cotacao.index')
-					],
-					[
-						'nome' => 'Notas recebidas (SEFAZ)',
-						'rota' => route('dfe.index')
-					],
-					// [
-					// 	'nome' => 'Devolução',
-					// 	'rota' => route('devolucao.index')
-					// ],
+					$item('Produtos', 'produtos.index'),
+					$item('Categorias', 'categorias.index'),
+					$item('Marcas', 'marcas.index'),
+					$item('Lista de preços', 'listaDePrecos.index'),
 				]
 			],
-			// [
-			// 	'titulo' => 'Gestão Pessoal',
-			// 	'icone' => 'bx bx-folder',
-			// 	'subs' => [
-			// 		[
-			// 			'nome' => 'Funcionários',
-			// 			'rota' => route('funcionarios.index')
-			// 		],
-			// 		[
-			// 			'nome' => 'Eventos',
-			// 			'rota' => route('eventoSalario.index')
-			// 		],
-			// 		[
-			// 			'nome' => 'Funcionários x Eventos',
-			// 			'rota' => route('funcionarioEventos.index')
-			// 		],
-			// 		[
-			// 			'nome' => 'Apuração Mensal',
-			// 			'rota' => route('apuracaoMensal.index')
-			// 		],
-			// 	]
-			// ],
 			[
 				'titulo' => 'Estoque',
 				'icone' => 'bx bx-box',
 				'subs' => [
-					[
-						'nome' => 'Listagem de estoque',
-						'rota' => route('estoque.index')
-					],
-					[
-						'nome' => 'Acerto de estoque',
-						'rota' => route('estoque.apontamentoProducao')
-					],
-					[
-						'nome' => 'Inventário',
-						'rota' => route('inventario.index')
-					],
-					[
-						'nome' => 'Importação em Massa',
-						'rota' => route('estoque.importacaoMassa.index')
-					],
-					[
-						'nome' => 'Estoque fiscal (com nota)',
-						'rota' => route('estoque-fiscal.index')
-					]
+					$item('Listagem de estoque', 'estoque.index'),
+					$item('Acerto de estoque', 'estoque.apontamentoProducao'),
+					$item('Inventário', 'inventario.index'),
+					$item('Importação em massa', 'estoque.importacaoMassa.index'),
 				]
 			],
-
 			[
-				'titulo' => 'Vendas',
-				'icone' => 'bx bx-cart',
+				'titulo' => 'Compras',
+				'icone' => 'bx bx-import',
 				'subs' => [
-
-					// [
-					// 	'nome' => 'Caixa',
-					// 	'rota' => route('caixa.index')
-					// ],
-					[
-						'nome' => 'Nova Venda',
-						'rota' => route('vendas.create')
-					],
-					[
-						'nome' => 'Lista de Vendas',
-						'rota' => route('vendas.index')
-					],
-					[
-						'nome' => 'Notas Fiscais (NF-e)',
-						'rota' => route('notas-fiscais.index')
-					],
-					[
-						'nome' => 'Vendas do Site',
-						'rota' => route('ecommerce-vendas.index')
-					],
-					[
-						'nome' => 'Promoções',
-						'rota' => route('promocoes.index')
-					],
-					[
-						'nome' => 'Rotas de entrega',
-						'rota' => route('rotas-entrega.index')
-					],
-					// [
-					// 	'nome' => 'Lista de Vendas - PDV',
-					// 	'rota' => route('frenteCaixa.list')
-					// ],
-					// [
-					// 	'nome' => 'Frente de Caixa',
-					// 	'rota' => route('frenteCaixa.index')
-					// ],
-					[
-						'nome' => 'Orçamentos',
-						'rota' => route('orcamentoVenda.index')
-					],
-					[
-						'nome' => 'Pré venda',
-						'rota' => route('preVenda.index')
-					],
-
-					// [
-					// 	'nome' => 'Ordem de Serviço',
-					// 	'rota' => route('ordemServico.index')
-					// ],
-
-					// [
-					// 	'nome' => 'Agendamentos',
-					// 	'rota' => route('agendamentos.index')
-					// ],
-					// [
-					// 	'nome' => 'Emissão de NFe',
-					// 	'rota' => route('nferemessa.index')
-					// ],
-
+					$item('Pedido de compra', 'compraManual.index'),
+					$item('Compras', 'compras.index'),
+					$item('Cotação', 'cotacao.index'),
+					$item('Fornecedores', 'fornecedores.index'),
+				]
+			],
+			[
+				'titulo' => 'Clientes',
+				'icone' => 'bx bx-user',
+				'subs' => [
+					$item('Clientes', 'clientes.index'),
+					$item('Grupos de cliente', 'gruposCliente.index'),
+				]
+			],
+			[
+				'secao' => 'Loja virtual',
+				'titulo' => 'Site',
+				'icone' => 'bx bx-store',
+				'subs' => [
+					$item('Pedidos do site', 'ecommerce-vendas.index'),
+					$item('Usuários do site', 'ecommerce-usuarios.index'),
+					$item('Vitrine do site', 'vitrine-site.index'),
+					$item('Notificações (e-mails)', 'notificacoes-site.index'),
+					$item('Frete por bairro', 'ecommerce-frete.index'),
+				]
+			],
+			[
+				'secao' => 'Gestão',
+				'titulo' => 'Fiscal',
+				'icone' => 'bx bx-receipt',
+				'subs' => [
+					$item('Notas fiscais (NF-e)', 'notas-fiscais.index'),
+					$item('Notas recebidas (SEFAZ)', 'dfe.index'),
+					$item('Estoque fiscal', 'estoque-fiscal.index'),
+					$item('Importar dados fiscais (XML)', 'produtos-fiscal-xml.index'),
+					$item('Natureza de operação', 'naturezas.index'),
+					$item('Configurar emitente', 'configNF.index'),
 				]
 			],
 			[
 				'titulo' => 'Financeiro',
 				'icone' => 'bx bx-dollar',
 				'subs' => [
-					[
-						'nome' => 'Contas a Pagar',
-						'rota' => route('conta-pagar.index')
-					],
-					[
-						'nome' => 'Contas a Receber',
-						'rota' => route('conta-receber.index')
-					],
-					[
-						'nome' => 'Movimentação de Caixa',
-						'rota' => route('fluxoCaixa.index')
-					],
-					[
-						'nome' => 'Gráficos',
-						'rota' => route('graficos.index')
-					],
+					$item('Contas a pagar', 'conta-pagar.index'),
+					$item('Contas a receber', 'conta-receber.index'),
+					$item('Movimentação de caixa', 'fluxoCaixa.index'),
+					$item('Contas bancárias', 'contaBancaria.index'),
+					$item('Formas de pagamento', 'formasPagamento.index'),
+					$item('Categorias de contas', 'categoria-conta.index'),
 				]
 			],
-
-			// [
-			// 	'titulo' => 'CTe',
-			// 	'icone' => 'bx bx-bus',
-			// 	'subs' => [
-			// 		[
-			// 			'nome' => 'Lista',
-			// 			'rota' => route('cte.index')
-			// 		],
-			// 		[
-			// 			'nome' => 'Nova',
-			// 			'rota' => route('cte.create'),
-			// 		],
-			// 		[
-			// 			'nome' => 'Categorias de Despesa',
-			// 			'rota' => route('categoriaDespesa.index')
-			// 		],
-			// 		// [
-			// 		// 	'nome' => 'Manifesto',
-			// 		// 	'rota' => route('cte.manifesto')
-			// 		// ],
-
-			// 	]
-			// ],
-
-			// [
-			// 	'titulo' => 'CTe Os',
-			// 	'icone' => 'bx bx-current-location',
-			// 	'subs' => [
-			// 		[
-			// 			'nome' => 'Lista',
-			// 			'rota' => route('cteOs.index')
-			// 		],
-			// 		[
-			// 			'nome' => 'Nova',
-			// 			'rota' => route('cteOs.create'),
-			// 		],
-			// 	]
-			// ],
-
 			[
 				'titulo' => 'Relatórios',
 				'icone' => 'bx bx-bar-chart-alt',
 				'subs' => [
-					[
-						'nome' => 'Relatórios',
-						'rota' => route('relatorios.index')
-					],
-					// [
-					// 	'nome' => 'DRE',
-					// 	'rota' => route('dre.index')
-					// ]
+					$item('Painel', 'graficos.index'),
+					$item('Relatórios', 'relatorios.index'),
 				]
 			],
-
-			// [
-			// 	'titulo' => 'Locação',
-			// 	'icone' => 'bx bx-bookmark',
-			// 	'subs' => [
-			// 		[
-			// 			'nome' => 'Nova Locação',
-			// 			'rota' => route('locacao.create')
-			// 		],
-			// 		[
-			// 			'nome' => 'Listar',
-			// 			'rota' => route('locacao.index')
-			// 		]
-			// 	]
-			// ],
-
-			// [
-			// 	'titulo' => 'Pedidos',
-			// 	'icone' => 'bx bx-purchase-tag',
-			// 	'subs' => [
-			// 		[
-			// 			'nome' => 'Abrir Comandas',
-			// 			'rota' => route('pedidos.index')
-			// 		],
-			// 		[
-			// 			'nome' => 'Adicionais',
-			// 			'rota' => route('deliveryComplemento.index')
-			// 		],
-			// 		[
-			// 			'nome' => 'Telas de Pedido',
-			// 			'rota' => '/telasPedido'
-			// 		],
-			// 		[
-			// 			'nome' => 'Controle de Pedidos',
-			// 			'rota' => route('controleCozinha.selecionar')
-			// 		],
-			// 		[
-			// 			'nome' => 'Cadastrar Mesas',
-			// 			'rota' => route('mesas.index')
-			// 		],
-			// 		[
-			// 			'nome' => 'Controle de Comandas',
-			// 			'rota' => route('pedidos.controleComandas')
-			// 		],
-			// 	]
-			// ],
-
 			[
 				'titulo' => 'Configurações',
 				'icone' => 'bx bx-cog',
 				'subs' => [
-					[
-						'nome' => 'Configurar Emitente',
-						'rota' => route('configNF.index')
-					],
-					// [
-					// 	'nome' => 'Cadastro do Contador',
-					// 	'rota' => route('escritorio.index')
-					// ],
-					[
-						'nome' => 'Natureza de Operação',
-						'rota' => route('naturezas.index')
-					],
-					// [
-					// 	'nome' => 'Tributação',
-					// 	'rota' => route('tributos.index')
-					// ],
-					// [
-					// 	'nome' => 'Enviar XML',
-					// 	'rota' => route('enviarXml.index')
-					// ],
-					// [
-					// 	'nome' => 'Ticket',
-					// 	'rota' => route('tickets.index')
-					// ],
+					$item('Usuários', 'usuarios.index'),
 				]
 			],
-
 		];
 	}
 

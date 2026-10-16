@@ -91,7 +91,9 @@ class NFeXmlParser
                 $vIpi = $ipi ? $n($ipi, 'vIPI') : 0.0;
                 $vSt = $icms ? ($n($icms, 'vICMSST') + $n($icms, 'vFCPST')) : 0.0;
             }
-            $custoTotal = $vProd + $n($prod, 'vFrete') + $n($prod, 'vSeg') + $n($prod, 'vOutro') - $n($prod, 'vDesc') + $vIpi + $vSt;
+            $vFreteOutros = $n($prod, 'vFrete') + $n($prod, 'vSeg') + $n($prod, 'vOutro');
+            $vDesc = $n($prod, 'vDesc');
+            $custoTotal = $vProd + $vFreteOutros - $vDesc + $vIpi + $vSt;
 
             $cab['itens'][] = [
                 'n' => (int) $det->getAttribute('nItem'),
@@ -106,6 +108,13 @@ class NFeXmlParser
                 'valor_unit' => (float) $this->txt($prod, 'vUnCom'),
                 'v_prod' => round($vProd, 2),
                 'custo_total' => round($custoTotal, 2),
+                // composição do custo (mostrada na conferência)
+                'v_ipi' => round($vIpi, 2),
+                'v_st' => round($vSt, 2),
+                'v_frete_outros' => round($vFreteOutros, 2),
+                'v_desc' => round($vDesc, 2),
+                // base do DIFAL pago na entrada: valor da mercadoria sem o ICMS-ST (onde há ST não há DIFAL)
+                'base_difal' => round($custoTotal - $vSt, 2),
                 'orig' => $orig,
                 'csosn' => $csosn,
                 'cst' => $cst,

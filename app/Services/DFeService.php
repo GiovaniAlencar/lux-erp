@@ -28,133 +28,127 @@ class DFeService{
 		
 	}
 
+	/**
+	 * Busca as notas recebidas na SEFAZ (Distribuição DF-e), respeitando as regras dela:
+	 * - continua sempre do último NSU que a própria SEFAZ devolveu (guardado por empresa/filial);
+	 * - para assim que não houver mais documentos (cStat 137) ou chegar ao maxNSU;
+	 * - depois disso, ou se a SEFAZ acusar "Consumo Indevido" (656), só deixa consultar de novo após 1 hora.
+	 * Retorna a lista de documentos (pode ser vazia) ou ['erro' => 1, 'message' => ...].
+	 */
 	public function novaConsulta($nsu){
-
-		$ultNSU = $nsu;
-		$maxNSU = $ultNSU;
-		$loopLimit = 5;
-		$iCount = 0;
-		//executa a busca de DFe em loop
-		$last = "";
-		$imprime = false;
-		$arrayDocs = [];
-		$respostas = [];
-		while ($ultNSU <= $maxNSU) {
-			$iCount++;
-			if ($iCount >= $loopLimit) {
-				break;
-			}
-			try {
-
-				$resp = $this->tools->sefazDistDFe($ultNSU);
-
-				// echo "<pre>";
-				// print_r($resp);
-				// echo "</pre>";
-
-				array_push($respostas, $resp);
-				
-				$dom = new \DOMDocument();
-				$dom->loadXML($resp);
-
-				$node = $dom->getElementsByTagName('retDistDFeInt')->item(0);
-				$tpAmb = $node->getElementsByTagName('tpAmb')->item(0)->nodeValue;
-				$verAplic = $node->getElementsByTagName('verAplic')->item(0)->nodeValue;
-				$cStat = $node->getElementsByTagName('cStat')->item(0)->nodeValue;
-				$xMotivo = $node->getElementsByTagName('xMotivo')->item(0)->nodeValue;
-				$dhResp = $node->getElementsByTagName('dhResp')->item(0)->nodeValue;
-				$ultNSU = $node->getElementsByTagName('ultNSU')->item(0)->nodeValue;
-				$maxNSU = $node->getElementsByTagName('maxNSU')->item(0)->nodeValue;
-				$lote = $node->getElementsByTagName('loteDistDFeInt')->item(0);
-
-
-				if (empty($lote)) {
-        //lote vazio
-					continue;
-				}
-				if($last != $ultNSU){
-					
-					$last = $ultNSU;
-					if (empty($lote)) {
-        			//lote vazio
-						continue;
-					}
-    				//essas tags irão conter os documentos zipados
-					$docs = $lote->getElementsByTagName('docZip');
-
-					foreach ($docs as $doc) {
-
-						$numnsu = $doc->getAttribute('NSU');
-						$schema = $doc->getAttribute('schema');
-
-						$content = gzdecode(base64_decode($doc->nodeValue));
-						$xml = simplexml_load_string($content);
-
-						$temp = [
-							'documento' => $xml->CNPJ,
-							'nome' => $xml->xNome,
-							'data_emissao' => $xml->dhEmi,
-							'valor' => $xml->vNF,
-							'num_prot' => $xml->nProt,
-							'chave' => $xml->chNFe,
-							'nsu' => $ultNSU,
-							'tipo' => 0,
-							'fatura_salva' => false,
-							'sequencia_evento' => 0,
-							'empresa_id' => $this->empresa_id
-						];
-						
-						array_push($arrayDocs, $temp);
-						
-						$tipo = substr($schema, 0, 6);
-
-					}
-					sleep(2);
-				}
-			} catch (\Exception $e) {
-				// echo "service: " . $e->getMessage();
-				return [
-					"erro" => 1,
-					"message" => $e->getMessage()
-				];
-			}
-
-		}
-
-		if(sizeof($arrayDocs) > 0){
-			return $arrayDocs;
-		}else{
-
-			$search1 = 'Consumo Indevido';
-			$xMotivo = "";
-				// $search2 = 'Rejeicao';
-			foreach($respostas as $resp){
-				try{
-					if(preg_match("/{$search1}/i", $resp)) {
-						$dom = new \DOMDocument();
-						$dom->loadXML($resp);
-						$xMotivo = $dom->getElementsByTagName('xMotivo')->item(0)->nodeValue;
-
-						return [
-							"erro" => 1,
-							"message" => $xMotivo
-						];
-					}else{
-						$dom = new \DOMDocument();
-						$dom->loadXML($resp);
-						$xMotivo = $dom->getElementsByTagName('xMotivo')->item(0)->nodeValue;
-					}
-				}catch(\Exception $e){
-
-				}
-			}
-
+		$controle = $this->lerControle();
+		if (!empty($controle['proxima']) && time() < $controle['proxima']) {
 			return [
 				"erro" => 1,
-				"message" => $xMotivo
+				"message" => "A SEFAZ só permite uma nova consulta a partir das " . date('H:i', $controle['proxima'])
+					. ". (Quando não há notas novas, ela exige 1 hora de intervalo entre as consultas.)"
 			];
 		}
 
+		$ultNSU = max((int) $nsu, (int) ($controle['ult_nsu'] ?? 0));
+		$maxNSU = $ultNSU;
+		$arrayDocs = [];
+		$esperar = false;
+
+		for ($i = 0; $i < 5; $i++) {
+			try {
+				$resp = $this->tools->sefazDistDFe($ultNSU);
+			} catch (\Exception $e) {
+				return ["erro" => 1, "message" => $e->getMessage()];
+			}
+
+			$dom = new \DOMDocument();
+			$dom->loadXML($resp);
+			$node = $dom->getElementsByTagName('retDistDFeInt')->item(0);
+			if (!$node) {
+				return ["erro" => 1, "message" => "Resposta inesperada da SEFAZ. Tente novamente mais tarde."];
+			}
+			$tag = fn ($n) => optional($node->getElementsByTagName($n)->item(0))->nodeValue;
+			$cStat = (string) $tag('cStat');
+			$xMotivo = (string) $tag('xMotivo');
+			$respUlt = (int) $tag('ultNSU');
+			$respMax = (int) $tag('maxNSU');
+
+			if ($cStat === '656') {
+				// a SEFAZ informa o ultNSU correto mesmo na rejeição: guarda para a próxima consulta
+				$this->salvarControle(max($ultNSU, $respUlt), time() + 3660);
+				return [
+					"erro" => 1,
+					"message" => "A SEFAZ bloqueou novas consultas por 1 hora (consumo indevido). Tente de novo a partir das "
+						. date('H:i', time() + 3660) . "."
+				];
+			}
+			if ($cStat === '137') { // nenhum documento novo
+				$ultNSU = max($ultNSU, $respUlt);
+				$esperar = true;
+				break;
+			}
+			if ($cStat !== '138') { // outro erro: não insiste
+				$this->salvarControle($ultNSU, null);
+				return ["erro" => 1, "message" => "[$cStat] $xMotivo"];
+			}
+
+			$lote = $node->getElementsByTagName('loteDistDFeInt')->item(0);
+			if ($lote) {
+				foreach ($lote->getElementsByTagName('docZip') as $doc) {
+					$content = gzdecode(base64_decode($doc->nodeValue));
+					$xml = @simplexml_load_string($content);
+					if (!$xml) {
+						continue;
+					}
+					$arrayDocs[] = [
+						'documento' => $xml->CNPJ,
+						'nome' => $xml->xNome,
+						'data_emissao' => $xml->dhEmi,
+						'valor' => $xml->vNF,
+						'num_prot' => $xml->nProt,
+						'chave' => $xml->chNFe,
+						'nsu' => (int) $doc->getAttribute('NSU'),
+						'tipo' => 0,
+						'fatura_salva' => false,
+						'sequencia_evento' => 0,
+						'empresa_id' => $this->empresa_id
+					];
+				}
+			}
+
+			$ultNSU = max($ultNSU, $respUlt);
+			$maxNSU = max($maxNSU, $respMax);
+			if ($ultNSU >= $maxNSU) { // pegou tudo que havia
+				$esperar = true;
+				break;
+			}
+			sleep(2);
+		}
+
+		$this->salvarControle($ultNSU, $esperar ? time() + 3660 : null);
+		return $arrayDocs;
+	}
+
+	/** Controle da consulta (último NSU e horário liberado) por empresa/filial, em storage/app/dfe. */
+	private function arquivoControle(): string
+	{
+		$dir = storage_path('app/dfe');
+		if (!is_dir($dir)) {
+			@mkdir($dir, 0775, true);
+		}
+		$filial = (int) ($this->config['is_filial'] ?? 0);
+		return $dir . '/controle_' . (int) $this->empresa_id . '_' . $filial . '.json';
+	}
+
+	private function lerControle(): array
+	{
+		$f = $this->arquivoControle();
+		return is_file($f) ? (json_decode((string) file_get_contents($f), true) ?: []) : [];
+	}
+
+	private function salvarControle(int $ultNSU, ?int $proxima): void
+	{
+		@file_put_contents($this->arquivoControle(), json_encode([
+			'ult_nsu' => $ultNSU,
+			'proxima' => $proxima,
+			'atualizado_em' => date('Y-m-d H:i:s'),
+		]));
 	}
 
 	public function consulta($data_inicial, $data_final){

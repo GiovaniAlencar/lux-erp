@@ -21,7 +21,7 @@
                     <h5 class="mb-0 text-primary">Conferir entrada da nota</h5>
                     <small class="text-muted">
                         Quantidade em <strong>unidades de venda</strong> (nota em caixa? ajuste — o custo unitário recalcula).
-                        Custo = produto + frete + seguro + outras + IPI + ICMS-ST − desconto da nota. Preço de venda só muda se você preencher.
+                        Custo = produto + frete + seguro + outras + IPI + ICMS-ST − desconto da nota, mais o <strong>DIFAL</strong> e os <strong>outros custos</strong> que você informar em cada nota. Preço de venda só muda se você preencher.
                     </small>
                 </div>
                 <a href="{{ route('estoque-fiscal.entrada') }}" class="btn btn-light btn-sm"><i class="bx bx-arrow-back"></i> Voltar</a>
@@ -51,6 +51,52 @@
                             @endif
                         </div>
                     </div>
+                    @if(!$n['ja_lancada'])
+                    <div class="row g-2 mt-2 align-items-end">
+                        <div class="col-6 col-md-2">
+                            <label class="form-label">DIFAL pago (%)</label>
+                            <div class="input-group">
+                                <input class="form-control ef-difal" name="notas[{{ $ni }}][difal_pct]" inputmode="decimal" placeholder="0">
+                                <span class="input-group-text">%</span>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label">Outros custos desta nota</label>
+                            <div class="input-group">
+                                <span class="input-group-text">R$</span>
+                                <input class="form-control ef-outros" name="notas[{{ $ni }}][outros_custos]" inputmode="decimal" placeholder="0,00">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-7 ef-sub ef-resumo-nota pb-2"></div>
+                    </div>
+                    <div class="ef-sub mt-1">DIFAL: % sobre o valor da mercadoria de cada item (sem o ICMS-ST). Outros custos (frete pago à parte, taxas…): divididos entre os itens lançados pelo valor de cada um.</div>
+                    <div class="row g-2 mt-2 align-items-end ef-precificar">
+                        <div class="col-12 col-md-2">
+                            <label class="form-label">Sugerir preço por</label>
+                            <select class="form-select ef-modo">
+                                <option value="markup" title="preço = custo × (1 + %)">Markup</option>
+                                <option value="margem" title="preço = custo ÷ (1 − %)">Margem</option>
+                            </select>
+                        </div>
+                        <div class="col-4 col-md-2">
+                            <label class="form-label">Normal</label>
+                            <div class="input-group"><input class="form-control ef-mk1" inputmode="decimal" placeholder="ex.: 60"><span class="input-group-text">%</span></div>
+                        </div>
+                        <div class="col-4 col-md-2">
+                            <label class="form-label">Atacado 1</label>
+                            <div class="input-group"><input class="form-control ef-mk2" inputmode="decimal" placeholder="ex.: 50"><span class="input-group-text">%</span></div>
+                        </div>
+                        <div class="col-4 col-md-2">
+                            <label class="form-label">Atacado 2</label>
+                            <div class="input-group"><input class="form-control ef-mk3" inputmode="decimal" placeholder="ex.: 45"><span class="input-group-text">%</span></div>
+                        </div>
+                        <div class="col-12 col-md-4 d-flex gap-2 align-items-end">
+                            <button type="button" class="btn btn-primary ef-aplicar"><i class="bx bx-calculator"></i> Aplicar a todos</button>
+                            <button type="button" class="btn btn-light ef-limpar-precos" title="Apagar os preços sugeridos (mantém os atuais)">Limpar preços</button>
+                        </div>
+                        <div class="col-12 ef-sub">Calcula sobre o <strong>custo médio real</strong> de cada item marcado e arredonda para cima, em reais inteiros (sem centavos). Os preços continuam editáveis um a um.</div>
+                    </div>
+                    @endif
                     <input type="hidden" name="notas[{{ $ni }}][chave]" value="{{ $nf['chave'] }}">
                     <input type="hidden" name="notas[{{ $ni }}][numero]" value="{{ $nf['numero'] }}">
                     <input type="hidden" name="notas[{{ $ni }}][emitente]" value="{{ $nf['emit_nome'] }}">
@@ -64,7 +110,7 @@
                                 <th style="min-width:200px">Item da nota</th>
                                 <th style="min-width:200px">Produto (ID)</th>
                                 <th style="width:90px">Qtd (un)</th>
-                                <th>Custo un. da nota</th>
+                                <th style="min-width:150px">Custo un. real</th>
                                 <th>Custo médio real <span class="ef-sub">(editável)</span></th>
                                 <th style="min-width:250px">Preço de venda <span class="ef-sub">(vazio = mantém)</span></th>
                             </tr>
@@ -77,6 +123,7 @@
                         @endphp
                         <tr class="ef-row"
                             data-custo-total="{{ $x['custo_total'] }}"
+                            data-base-difal="{{ $x['base_difal'] ?? $x['custo_total'] }}"
                             data-estoque="{{ $r['estoque'] }}"
                             data-custo="{{ $pr ? (float) $pr->valor_compra : 0 }}"
                             data-preco="{{ $pr ? (float) $pr->valor_venda : 0 }}"
@@ -85,9 +132,18 @@
                             <td class="text-center"><input type="checkbox" class="form-check-input" name="{{ $base }}[aplicar]" value="1" {{ $r['produto_id'] && !$n['ja_lancada'] ? 'checked' : '' }} {{ $dis }}></td>
                             <td>
                                 {{ $x['nome'] }}
-                                <div class="ef-sub">cód {{ $x['cProd'] }}{{ $x['ean'] ? ' · EAN ' . $x['ean'] : '' }} · {{ $fq($x['qtd']) }} {{ $x['unidade'] }} · total R$ {{ __moeda($x['custo_total']) }}</div>
+                                <div class="ef-sub">cód {{ $x['cProd'] }}{{ $x['ean'] ? ' · EAN ' . $x['ean'] : '' }} · {{ $fq($x['qtd']) }} {{ $x['unidade'] }}</div>
+                                <div class="ef-sub">
+                                    produto R$ {{ __moeda($x['v_prod']) }}
+                                    @if(($x['v_ipi'] ?? 0) > 0) · IPI R$ {{ __moeda($x['v_ipi']) }}@endif
+                                    @if(($x['v_st'] ?? 0) > 0) · ICMS-ST R$ {{ __moeda($x['v_st']) }}@endif
+                                    @if(($x['v_frete_outros'] ?? 0) > 0) · frete/outras R$ {{ __moeda($x['v_frete_outros']) }}@endif
+                                    @if(($x['v_desc'] ?? 0) > 0) · desconto −R$ {{ __moeda($x['v_desc']) }}@endif
+                                    · <strong>total da nota R$ {{ __moeda($x['custo_total']) }}</strong>
+                                </div>
                                 <input type="hidden" name="{{ $base }}[xml_nome]" value="{{ $x['nome'] }}">
                                 <input type="hidden" name="{{ $base }}[custo_total]" value="{{ $x['custo_total'] }}">
+                                <input type="hidden" name="{{ $base }}[base_difal]" value="{{ $x['base_difal'] ?? $x['custo_total'] }}">
                             </td>
                             <td>
                                 <div class="input-group input-group-sm">
@@ -138,14 +194,50 @@
     function pct(c, p) { return c > 0 ? ((p - c) / c * 100) : 0; }
     function fp(n) { return n.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%'; }
 
+    // DIFAL (% sobre a mercadoria sem ST) e outros custos (rateados pelo valor dos itens marcados)
+    function extrasDoItem(tr, nota) {
+        var difalPct = nota.querySelector('.ef-difal') ? num(nota.querySelector('.ef-difal').value) : 0;
+        var outros = nota.querySelector('.ef-outros') ? num(nota.querySelector('.ef-outros').value) : 0;
+        var soma = 0;
+        nota.querySelectorAll('.ef-row').forEach(function (r) {
+            var c = r.querySelector('input[type=checkbox]');
+            if (c && c.checked) soma += Math.max(0, parseFloat(r.dataset.custoTotal || '0'));
+        });
+        var chk = tr.querySelector('input[type=checkbox]');
+        var marcado = chk && chk.checked;
+        var total = parseFloat(tr.dataset.custoTotal || '0');
+        return {
+            difal: parseFloat(tr.dataset.baseDifal || '0') * difalPct / 100,
+            outros: (marcado && soma > 0) ? outros * Math.max(0, total) / soma : 0
+        };
+    }
+    function resumoNota(nota) {
+        var el = nota.querySelector('.ef-resumo-nota');
+        if (!el) return;
+        var difal = 0, outros = 0, base = 0;
+        nota.querySelectorAll('.ef-row').forEach(function (r) {
+            var c = r.querySelector('input[type=checkbox]');
+            if (!c || !c.checked) return;
+            var x = extrasDoItem(r, nota);
+            difal += x.difal; outros += x.outros; base += parseFloat(r.dataset.custoTotal || '0');
+        });
+        el.innerHTML = 'Itens marcados: ' + m(base) + (difal > 0 ? ' + DIFAL ' + m(difal) : '') + (outros > 0 ? ' + outros ' + m(outros) : '') + ' = <b>' + m(base + difal + outros) + '</b> no custo';
+    }
+
     function calc(tr) {
         var nota = tr.closest('.ef-nota');
         var normal = nota.querySelector('.ef-normal');
         var comNormal = normal ? normal.checked : false;
         var q = num(tr.querySelector('.ef-q').value);
-        var total = parseFloat(tr.dataset.custoTotal || '0');
+        var totalNota = parseFloat(tr.dataset.custoTotal || '0');
+        var x = extrasDoItem(tr, nota);
+        var total = totalNota + x.difal + x.outros;
         var cu = q > 0 ? total / q : 0;
-        tr.querySelector('.ef-cu').innerHTML = q > 0 ? m(cu) : '—';
+        var det = '';
+        if (q > 0 && (x.difal > 0 || x.outros > 0)) {
+            det = '<div class="ef-sub">nota ' + m(totalNota / q) + (x.difal > 0 ? ' + DIFAL ' + m(x.difal / q) : '') + (x.outros > 0 ? ' + outros ' + m(x.outros / q) : '') + '</div>';
+        }
+        tr.querySelector('.ef-cu').innerHTML = q > 0 ? '<b>' + m(cu) + '</b>' + det : '—';
 
         var est = Math.max(0, parseFloat(tr.dataset.estoque || '0'));
         var custo = parseFloat(tr.dataset.custo || '0');
@@ -196,8 +288,61 @@
                 });
         });
     });
-    document.querySelectorAll('.ef-normal').forEach(function (c) {
-        c.addEventListener('change', function () { c.closest('.ef-nota').querySelectorAll('.ef-row').forEach(calc); });
+    function recalcNota(nota) { nota.querySelectorAll('.ef-row').forEach(calc); resumoNota(nota); }
+
+    // preço sugerido a partir do custo real: markup (custo × (1+%)) ou margem (custo ÷ (1−%)), arredondado p/ cima em reais
+    function sugerir(custo, pctTxt, modo) {
+        if (String(pctTxt).trim() === '' || !(custo > 0)) return null;
+        var p = num(pctTxt);
+        var preco = modo === 'margem' ? (p < 100 ? custo / (1 - p / 100) : null) : custo * (1 + p / 100);
+        return preco ? Math.ceil(preco - 0.0001) : null;
+    }
+    function aplicarPrecos(nota) {
+        var modo = nota.querySelector('.ef-modo').value;
+        var pcts = ['.ef-mk1', '.ef-mk2', '.ef-mk3'].map(function (c) { return nota.querySelector(c).value; });
+        if (pcts.every(function (v) { return String(v).trim() === ''; })) { alert('Informe ao menos um percentual.'); return; }
+        try { localStorage.setItem('lux_precificar', JSON.stringify({ modo: modo, pcts: pcts })); } catch (er) {}
+        var n = 0;
+        nota.querySelectorAll('.ef-row').forEach(function (tr) {
+            var chk = tr.querySelector('input[type=checkbox]');
+            if (!chk || !chk.checked) return;
+            var custo = num(tr.querySelector('.ef-cr').value);
+            ['.ef-p1', '.ef-p2', '.ef-p3'].forEach(function (cls, i) {
+                var v = sugerir(custo, pcts[i], modo);
+                if (v !== null) tr.querySelector(cls).value = String(v).replace('.', ',') + ',00';
+            });
+            calc(tr); n++;
+        });
+        if (!n) alert('Nenhum item marcado para lançar nesta nota.');
+    }
+    document.querySelectorAll('.ef-nota').forEach(function (nota) {
+        nota.addEventListener('input', function (e) {
+            if (e.target.matches('.ef-difal, .ef-outros')) {
+                if (e.target.matches('.ef-difal')) { try { localStorage.setItem('lux_difal_pct', e.target.value); } catch (er) {} }
+                recalcNota(nota);
+            }
+        });
+        nota.addEventListener('change', function (e) {
+            if (e.target.matches('.ef-normal, .ef-row input[type=checkbox]')) recalcNota(nota);
+        });
+        var btn = nota.querySelector('.ef-aplicar');
+        if (btn) btn.addEventListener('click', function () { aplicarPrecos(nota); });
+        var limpar = nota.querySelector('.ef-limpar-precos');
+        if (limpar) limpar.addEventListener('click', function () {
+            nota.querySelectorAll('.ef-p1, .ef-p2, .ef-p3').forEach(function (i) { i.value = ''; });
+            nota.querySelectorAll('.ef-row').forEach(calc);
+        });
+        try {
+            var salvo = JSON.parse(localStorage.getItem('lux_precificar') || 'null');
+            if (salvo && nota.querySelector('.ef-modo')) {
+                nota.querySelector('.ef-modo').value = salvo.modo || 'markup';
+                ['.ef-mk1', '.ef-mk2', '.ef-mk3'].forEach(function (c, i) { nota.querySelector(c).value = (salvo.pcts || [])[i] || ''; });
+            }
+        } catch (er) {}
+        // lembra o último % de DIFAL usado neste computador
+        var d = nota.querySelector('.ef-difal');
+        if (d && !d.value) { try { d.value = localStorage.getItem('lux_difal_pct') || ''; } catch (er) {} }
+        recalcNota(nota);
     });
 })();
 </script>

@@ -248,7 +248,14 @@ class NotaFiscalEmissor
             return ['ok' => false, 'msg' => $msg];
         }
 
-        $assinado = $nfe->sign($gerada['xml']);
+        try {
+            $assinado = $nfe->sign($gerada['xml']);
+        } catch (\Throwable $e) {
+            // XML recusado pela validação antes de sair para a SEFAZ (nada foi enviado)
+            $msg = 'A nota não foi enviada: ' . $this->textoValidacaoXml($e->getMessage());
+            $nota->update(['ultimo_retorno' => $msg]);
+            return ['ok' => false, 'msg' => $msg];
+        }
         // guarda o XML assinado: se a SEFAZ demorar, dá para consultar e montar o XML autorizado depois
         $this->salvarAssinado($gerada['chave'], $assinado);
         $res = $nfe->transmitir($assinado, $gerada['chave']);
@@ -410,6 +417,27 @@ class NotaFiscalEmissor
         $nota->save();
 
         return ['ok' => true, 'msg' => 'Carta de correção nº ' . $nota->sequencia_cce . ' registrada.'];
+    }
+
+    /** Traduz o erro de schema do XML para algo que dê para corrigir no cadastro. */
+    private function textoValidacaoXml(string $erro): string
+    {
+        $campos = [
+            'xNome' => 'nome/razão social', 'xLgr' => 'rua', 'nro' => 'número', 'xCpl' => 'complemento',
+            'xBairro' => 'bairro', 'CEP' => 'CEP', 'fone' => 'telefone', 'email' => 'e-mail', 'IE' => 'inscrição estadual',
+            'xProd' => 'nome do produto', 'NCM' => 'NCM', 'CEST' => 'CEST', 'cEAN' => 'código de barras', 'infCpl' => 'informações complementares',
+        ];
+        if (preg_match("/Element '\{[^}]*\}(\w+)'/", $erro, $m)) {
+            $campo = $campos[$m[1]] ?? $m[1];
+            if (preg_match("/maximum length of '(\d+)'/", $erro, $mm)) {
+                return "o campo \"{$campo}\" passou do limite de {$mm[1]} caracteres. Encurte no cadastro e tente de novo.";
+            }
+            if (preg_match("/minimum length|pattern/", $erro)) {
+                return "o campo \"{$campo}\" está vazio ou em formato inválido. Corrija no cadastro e tente de novo.";
+            }
+            return "o campo \"{$campo}\" está inválido ({$erro}).";
+        }
+        return $erro;
     }
 
     /** Interpreta o retorno de evento do NFService (array ok | ['erro'=>true,...] | null). */

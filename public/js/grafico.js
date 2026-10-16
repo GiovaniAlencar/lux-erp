@@ -179,7 +179,7 @@ $(function () {
 				type: 'gradient',
 				gradient: {
 					shade: 'light',
-					gradientToColors: ['#8833ff'],
+					gradientToColors: ['#c9a24d'],
 					shadeIntensity: 1,
 					type: 'vertical',
 					opacityFrom: 0.8,
@@ -187,7 +187,7 @@ $(function () {
 
 				},
 			},
-			colors: ["#8833ff"],
+			colors: ["#c9a24d"],
 			yaxis: {
 				labels: {
 					formatter: function (value) {
@@ -197,7 +197,7 @@ $(function () {
 			},
 			markers: {
 				size: 4,
-				colors: ["#8833ff"],
+				colors: ["#c9a24d"],
 				strokeColors: "#fff",
 				strokeWidth: 2,
 				hover: {
@@ -257,7 +257,7 @@ $(function () {
 				width: 2,
 				colors: ['transparent']
 			},
-			colors: ["#e62e2e", "#29cc39", "#0dcaf0"],
+			colors: ["#c9a24d", "#16a34a", "#94a3b8"],
 			xaxis: {
 				categories: res.meses,
 			},
@@ -343,14 +343,14 @@ function graficoContaReceber(){
 				gradient: {
 					shade: 'dark',
 					shadeIntensity: 0.15,
-					gradientToColors: ['#4a00e0'],
+					gradientToColors: ['#9c7a2e'],
 					inverseColors: false,
 					opacityFrom: 1,
 					opacityTo: 1,
 					stops: [0, 50, 65, 91]
 				},
 			},
-			colors: ["#8e2de2"],
+			colors: ["#c9a24d"],
 			stroke: {
 				dashArray: 4
 			},
@@ -423,14 +423,14 @@ function graficoContaPagar(){
 				gradient: {
 					shade: 'dark',
 					shadeIntensity: 0.15,
-					gradientToColors: ['#4a00e0'],
+					gradientToColors: ['#9c7a2e'],
 					inverseColors: false,
 					opacityFrom: 1,
 					opacityTo: 1,
 					stops: [0, 50, 65, 91]
 				},
 			},
-			colors: ["#8e2de2"],
+			colors: ["#c9a24d"],
 			stroke: {
 				dashArray: 4
 			},

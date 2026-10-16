@@ -123,9 +123,9 @@
                                     </div>
                                     <div class="card-body">
                                         <div class="d-flex align-items-center ms-auto font-13 gap-2">
-                                            <span class="border px-1 rounded cursor-pointer"><i class="bx bxs-circle text-danger me-1"></i>Cadastrados no Mês</span>
-                                            <span class="border px-1 rounded cursor-pointer"><i class="bx bxs-circle text-success me-1"></i>Vendidos no Dia</span>
-                                            <span class="border px-1 rounded cursor-pointer"><i class="bx bxs-circle text-info me-1"></i>Sem venda no Mês</span>
+                                            <span class="border px-1 rounded cursor-pointer"><i class="bx bxs-circle me-1" style="color:#c9a24d"></i>Cadastrados no Mês</span>
+                                            <span class="border px-1 rounded cursor-pointer"><i class="bx bxs-circle me-1" style="color:#16a34a"></i>Vendidos no Dia</span>
+                                            <span class="border px-1 rounded cursor-pointer"><i class="bx bxs-circle me-1" style="color:#94a3b8"></i>Sem venda no Mês</span>
                                         </div>
                                         <div id="chart2"></div>
                                     </div>

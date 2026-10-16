@@ -159,11 +159,11 @@ class NFService{
 
 		// ENDERECO EMITENTE
 		$stdEnderEmit = new \stdClass();
-		$stdEnderEmit->xLgr = $this->retiraAcentos($config->logradouro);
+		$stdEnderEmit->xLgr = $this->campoNFe($config->logradouro);
 		$stdEnderEmit->nro = $config->numero;
-		$stdEnderEmit->xCpl = $this->retiraAcentos($config->complemento);
+		$stdEnderEmit->xCpl = $this->campoNFe($config->complemento);
 		
-		$stdEnderEmit->xBairro = $this->retiraAcentos($config->bairro);
+		$stdEnderEmit->xBairro = $this->campoNFe($config->bairro);
 		$stdEnderEmit->cMun = $config->cidade->codigo;
 		$stdEnderEmit->xMun = $this->retiraAcentos($config->cidade->nome);
 		$stdEnderEmit->UF = $config->cidade->uf;
@@ -187,7 +187,7 @@ class NFService{
 		// DESTINATARIO
 		$stdDest = new \stdClass();
 		$pFisica = false;
-		$stdDest->xNome = $this->retiraAcentos($venda->cliente->razao_social);
+		$stdDest->xNome = $this->campoNFe($venda->cliente->razao_social);
 		if((int)$config->ambiente == 2){
 			// exigência da SEFAZ em homologação
 			$stdDest->xNome = 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL';
@@ -230,10 +230,10 @@ class NFService{
 		$dest = $nfe->tagdest($stdDest);
 
 		$stdEnderDest = new \stdClass();
-		$stdEnderDest->xLgr = $this->retiraAcentos($venda->cliente->rua);
-		$stdEnderDest->nro = $this->retiraAcentos($venda->cliente->numero);
-		$stdEnderDest->xCpl = $this->retiraAcentos($venda->cliente->complemento);
-		$stdEnderDest->xBairro = $this->retiraAcentos($venda->cliente->bairro);
+		$stdEnderDest->xLgr = $this->campoNFe($venda->cliente->rua);
+		$stdEnderDest->nro = $this->campoNFe($venda->cliente->numero);
+		$stdEnderDest->xCpl = $this->campoNFe($venda->cliente->complemento);
+		$stdEnderDest->xBairro = $this->campoNFe($venda->cliente->bairro);
 
 		$telefone = $venda->cliente->telefone;
 		$telefone = preg_replace('/[^0-9]/', '', $telefone);
@@ -1109,6 +1109,19 @@ class NFService{
 	private function has13Numbers(array $ean)
 	{
 		return count($ean) === 13;
+	}
+
+	/**
+	 * Texto de endereço/nome no limite do layout da NF-e (60 caracteres):
+	 * sem acento, sem espaços sobrando e cortado se passar do tamanho.
+	 * Complemento vazio vai como null (a tag não pode ir vazia).
+	 */
+	private function campoNFe($texto, int $max = 60){
+		$t = trim(preg_replace('/\s+/', ' ', (string) $this->retiraAcentos((string) $texto)));
+		if ($t === '') {
+			return null;
+		}
+		return rtrim(mb_substr($t, 0, $max));
 	}
 
 	private function retiraAcentos($texto){

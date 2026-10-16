@@ -163,6 +163,9 @@ class EstoqueFiscalController extends Controller
                     continue;
                 }
                 $comEstoqueNormal = !empty($n['estoque_normal']);
+                // custos que não vêm na nota: DIFAL pago (% sobre a mercadoria) e outros custos (R$, rateados pelo valor)
+                $difalPct = min(100, max(0, (float) __convert_value_bd((string) ($n['difal_pct'] ?? '0'))));
+                $outrosCustos = max(0, (float) __convert_value_bd((string) ($n['outros_custos'] ?? '0')));
 
                 // itens válidos desta nota
                 $linhas = [];
@@ -177,11 +180,21 @@ class EstoqueFiscalController extends Controller
                         $avisos[] = 'Item "' . ($r['xml_nome'] ?? '') . '" sem produto ou quantidade — ignorado.';
                         continue;
                     }
-                    $linhas[] = [$p, $q, $custoTotal > 0 ? $custoTotal / $q : null, $r];
+                    $baseDifal = (float) __convert_value_bd((string) ($r['base_difal'] ?? '0'));
+                    $linhas[] = [$p, $q, $custoTotal, $r, $baseDifal];
                 }
                 if (!$linhas) {
                     continue;
                 }
+                $somaNota = array_sum(array_map(fn ($l) => max(0, $l[2]), $linhas));
+                foreach ($linhas as $k => [$p, $q, $custoTotal, $r, $baseDifal]) {
+                    $extra = $baseDifal * $difalPct / 100
+                        + ($somaNota > 0 ? $outrosCustos * max(0, $custoTotal) / $somaNota : 0);
+                    $final = $custoTotal + $extra;
+                    $linhas[$k] = [$p, $q, $final > 0 ? $final / $q : null, $r];
+                }
+                $infoCustos = ($difalPct > 0 ? ' · DIFAL ' . rtrim(rtrim(number_format($difalPct, 2, ',', ''), '0'), ',') . '%' : '')
+                    . ($outrosCustos > 0 ? ' · outros custos R$ ' . number_format($outrosCustos, 2, ',', '.') : '');
 
                 // compra (histórico) quando também entra no estoque normal e o fornecedor está cadastrado
                 $compra = null;
@@ -213,7 +226,7 @@ class EstoqueFiscalController extends Controller
                     $svc->entrada($p, $q, [
                         'chave' => $chave ?: null,
                         'documento' => $doc,
-                        'observacao' => mb_substr('Item XML: ' . ($r['xml_nome'] ?? ''), 0, 255),
+                        'observacao' => mb_substr('Item XML: ' . ($r['xml_nome'] ?? '') . $infoCustos, 0, 255),
                     ], $cu);
 
                     $p->refresh();

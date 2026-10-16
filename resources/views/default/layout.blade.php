@@ -1,5 +1,5 @@
 <!doctype html>
-    <html lang="pt-BR" class="{{ $theme != null ? $theme->tema : ''}} {{ $theme != null ? $theme->cabecalho : ''}} {{ $theme != null ? 'color-sidebar ' . $theme->plano_fundo : ''}}">
+    <html lang="pt-BR" class="{{ ($theme != null && $theme->tema == 'dark-theme') ? 'dark-theme' : 'light-theme' }}">
 
     <head>
         <!-- Required meta tags -->
@@ -11,7 +11,7 @@
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
         <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 
         <link href="/assets/css/simplebar.css" rel="stylesheet" />
@@ -26,14 +26,11 @@
         <!-- Bootstrap CSS -->
         <link href="/assets/css/bootstrap.min.css" rel="stylesheet">
         <link href="/assets/css/bootstrap-extended.css" rel="stylesheet">
-        <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
         <link href="/assets/css/app.css" rel="stylesheet">
         <link href="/assets/css/icons.css" rel="stylesheet">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
         <!-- Theme Style CSS -->
         <link rel="stylesheet" href="/assets/css/dark-theme.css" />
-        <link rel="stylesheet" href="/assets/css/semi-dark.css" />
-        <link rel="stylesheet" href="/assets/css/header-colors.css" />
         <link href="/assets/css/select2.min.css" rel="stylesheet" />
         <link href="/assets/css/select2-bootstrap4.css" rel="stylesheet" />
         <link href="/assets/css/style.css" rel="stylesheet" />
@@ -43,18 +40,10 @@
 
         <title>{{$title}}</title>
 
-        @yield('css')
+        {{-- tema único da LUX (claro/escuro): padroniza todas as telas --}}
+        <link href="/assets/css/lux-erp.css?v=2" rel="stylesheet" />
 
-        @if($colorDefault != '')
-        <style type="text/css">
-            :root {
-                --color-default: {{$colorDefault}};
-            }
-            
-        </style>
-        <link href="/assets/css/extend.css" rel="stylesheet" />
-        @endif
-                <link rel="stylesheet" href="/assets/css/modern-ui.css">
+        @yield('css')
     </head>
 
     <body>
@@ -64,8 +53,10 @@
                 <div class="sidebar-header">
                     <div>
                         <a href="{{ route('graficos.index') }}">
-                            <img src="/logos/default.png" class="logo-icon" alt="logo icon">
+                            <img src="/logos/lux.png" class="logo-icon" alt="LUX Perfumes">
                         </a>
+                    </div>
+                    <div class="lx-brand">LUX<small>ERP</small>
                     </div>
                     <div class="toggle-icon ms-auto"><i class='bx bx-first-page'></i>
                     </div>
@@ -112,20 +103,14 @@
                         </div>
 
                         @if(!session('user_contador'))
-                        <div class="top-menu-left d-none d-lg-block">
-                            <ul class="nav">
-                                <li class="nav-item">
-                                    <a href="{{ route('configNF.index')}}" class="btn btn-dark position-relative me-lg-2 btn-sm"> <i class="bi bi-patch-check align-middle"></i> Ambiente: {{session('user_logged')['ambiente']}} </span></span>
-                                    </a>
-                                </li>
-                            </ul>
-                        </div>
-                        <div class="top-menu">
-                            <a class="btn btn-primary btn-sm px-3" href="{{ route('frenteCaixa.index') }}"><i class="bi bi-cart"> </i> PDV</a>
-
+                        @php $amb = mb_strtolower((string) (session('user_logged')['ambiente'] ?? '')); @endphp
+                        <div class="d-flex align-items-center gap-2">
+                            <a href="{{ route('configNF.index')}}" class="lx-env d-none d-md-inline-flex {{ str_contains($amb, 'produ') ? 'is-prod' : (str_contains($amb, 'homolog') ? 'is-hom' : '') }}" title="Ambiente da nota fiscal">
+                                <span class="lx-dot"></span> NF-e: {{ session('user_logged')['ambiente'] }}
+                            </a>
+                            <a class="lx-pdv" href="{{ route('frenteCaixa.index') }}"><i class="bi bi-cart"></i> PDV</a>
                             @if($ultimoAcesso != null)
-                            <button type="button" class="btn btn-light btn-sm float-right btn-ip">Endereço do IP: <span class="badge bg-secondary">{{ $ultimoAcesso->ip_address }}</span>
-                            </button>
+                            <span class="lx-ip d-none d-xl-inline ms-2" title="Endereço IP do último acesso">IP {{ $ultimoAcesso->ip_address }}</span>
                             @endif
                         </div>
                         @endif
@@ -147,7 +132,12 @@
                             </div>
                         </div>
                         <div class="top-menu ms-auto">
-                            <ul class="navbar-nav align-items-center">
+                            <ul class="navbar-nav align-items-center gap-1">
+                                <li class="nav-item">
+                                    <button type="button" class="lx-icon-btn" id="lx-theme-toggle" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro">
+                                        <i class="bi bi-moon lx-moon"></i><i class="bi bi-sun lx-sun"></i>
+                                    </button>
+                                </li>
                                 <!-- <li class="nav-item mobile-search-icon">
                                     <a class="nav-link" href="javascript:;"> <i class='bx bx-search'></i>
                                     </a>
@@ -223,7 +213,14 @@
                             <li><a class="dropdown-item" href="javascript:;"><i class="bx bx-cog"></i><span>Settings</span></a>
                             </li>
                         -->
-                        <li><a class="dropdown-item" href="/login/logoff"><i class="bi bi-box-arrow-right"></i><span>Sair</span></a>
+                        <li>
+                            @if($audio == 0)
+                            <a class="dropdown-item" href="javascript:;" onclick="avisoSonoro('1')"><i class="bi bi-volume-up me-2"></i><span>Ligar aviso sonoro</span></a>
+                            @else
+                            <a class="dropdown-item" href="javascript:;" onclick="avisoSonoro('0')"><i class="bi bi-volume-mute me-2"></i><span>Desligar aviso sonoro</span></a>
+                            @endif
+                        </li>
+                        <li><a class="dropdown-item" href="/login/logoff"><i class="bi bi-box-arrow-right me-2"></i><span>Sair</span></a>
                         </li>
                     </ul>
                 </div>
@@ -395,6 +392,20 @@
 <script src="/assets/js/app.js"></script>
 <script src="/js/main.js"></script>
 <script src="/js/theme.js"></script>
+<script>
+    // tema claro/escuro (fica salvo no usuário)
+    $('#lx-theme-toggle').on('click', function () {
+        const html = document.documentElement;
+        const escuro = !html.classList.contains('dark-theme');
+        html.classList.remove('light-theme', 'dark-theme', 'semi-dark', 'minimal-theme');
+        html.classList.add(escuro ? 'dark-theme' : 'light-theme');
+        const salvar = $.post(path_url + 'api/usuarios/set-theme', { tema: escuro ? 'dark-theme' : 'light-theme', usuario_id: $('#usuario_id').val() });
+        // telas que montam o tema no servidor (vendas) precisam recarregar
+        if (document.querySelector('[data-vendas-ui], [data-venda-ui], [data-tema-servidor]')) {
+            salvar.always(() => location.reload());
+        }
+    });
+</script>
 <script src="https://cdn.ckeditor.com/ckeditor5/35.1.0/classic/ckeditor.js"></script>
 <script type="text/javascript" src="/js/noticacao.js"></script>
 
