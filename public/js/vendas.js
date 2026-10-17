@@ -5,6 +5,7 @@ var SENHADESBLOQUEADA = false
 $('#remover_parcelas').click(() => {
     $('.table-payment tbody').html('')
     $('.sum-payment').html('')
+    total_payment = 0
 
 })
 
@@ -775,6 +776,7 @@ $(".table-payment").on('click', '.btn-delete-row', function () {
     $(this).closest('tr').remove();
     swal("Sucesso", "Parcela removida!", "success")
     calcTotal()
+    calcTotalPayment()
 });
 
 $('#inp-natureza_id').change(() => {

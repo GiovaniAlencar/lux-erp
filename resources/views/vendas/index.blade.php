@@ -543,6 +543,11 @@
                                             <a href="{{ route('vendas.show', $item->id) }}" class="inline-flex items-center justify-center p-2 rounded-l-xl @if($vendasUiDark) text-gray-300 bg-gray-800/95 hover:bg-indigo-500/28 hover:text-indigo-100 @else text-gray-600 bg-gray-50 hover:bg-indigo-50 hover:text-indigo-700 @endif" title="Ver detalhes, histórico e totais" aria-label="Visualizar" data-bs-toggle="tooltip" data-bs-placement="top">
                                                 <i data-lucide="eye" class="size-4"></i>
                                             </a>
+                                            @php $qtdComp = (int) ($comprovantesPorVenda[$item->id] ?? 0); @endphp
+                                            <button type="button" data-lux-comprovantes="{{ $item->id }}" class="relative inline-flex items-center justify-center p-2 border-l @if($vendasUiDark) text-emerald-200/95 bg-gray-800/95 border-gray-600/80 hover:bg-emerald-500/20 @else text-emerald-700 bg-white border-gray-200 hover:bg-emerald-50 @endif" title="Comprovantes de pagamento" aria-label="Comprovantes de pagamento" data-bs-toggle="tooltip" data-bs-placement="top">
+                                                <i data-lucide="paperclip" class="size-4"></i>
+                                                <span data-lux-comp-count="{{ $item->id }}" class="lux-comp-badge {{ $qtdComp ? '' : 'd-none' }}">{{ $qtdComp ?: '' }}</span>
+                                            </button>
                                             @if(!$item->fechada_caixa)
                                                 <a href="{{ route('vendas.edit', $item->id) }}" class="inline-flex items-center justify-center p-2 border-l venda-acao-editar @if($vendasUiDark) text-gray-300 bg-gray-800/95 border-gray-600/80 hover:bg-gray-700 hover:text-white @else text-gray-600 bg-white border-gray-200 hover:bg-gray-100 hover:text-gray-900 @endif" title="Alterar itens, cliente ou valores" aria-label="Editar" data-bs-toggle="tooltip" data-bs-placement="top">
                                                     <i data-lucide="pencil" class="size-4"></i>
@@ -589,6 +594,8 @@
     </div>
 </div>
 </div>
+
+@include('vendas.partials.comprovantes_modal')
 
 {{-- Modais e e-mail: inalterados --}}
 <div class="modal fade" id="modal-cancelar" aria-modal="true" role="dialog" style="overflow:scroll;" tabindex="-1">

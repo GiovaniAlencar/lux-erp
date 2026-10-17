@@ -164,6 +164,10 @@ class ContaPagarController extends Controller
         if (!__valida_objeto($item)) {
             abort(403);
         }
+        if (\App\Models\FinMovimento::where('conta_pagar_id', $item->id)->exists()) {
+            session()->flash('flash_erro', 'Esta conta já tem pagamento registrado. Desfaça os pagamentos no extrato (Financeiro) antes de excluir.');
+            return redirect()->route('conta-pagar.index');
+        }
         try {
             $item->delete();
             session()->flash("flash_sucesso", "Conta removida!");
@@ -180,26 +184,48 @@ class ContaPagarController extends Controller
         if (!__valida_objeto($item)) {
             abort(403);
         }
-        return view('conta_pagar.pay', compact('item'));
+        $contas = \App\Models\FinConta::daEmpresa($item->empresa_id);
+        $baixas = \App\Models\FinMovimento::with('conta', 'usuario')
+            ->where('conta_pagar_id', $item->id)->orderBy('data')->orderBy('id')->get();
+        $restante = \App\Services\Financeiro::restante($item);
+        return view('conta_pagar.pay', compact('item', 'contas', 'baixas', 'restante'));
     }
 
+    /** Baixa total ou parcial, na conta escolhida, com comprovante opcional. */
     public function payPut(Request $request, $id)
     {
         $item = ContaPagar::findOrFail($id);
         if (!__valida_objeto($item)) {
             abort(403);
         }
+        $request->validate([
+            'valor_pago' => 'required|string|max:20',
+            'data_pagamento' => 'required|date',
+            'conta_id' => 'required|integer',
+            'tipo_pagamento' => 'nullable|string|max:30',
+            'comprovante' => 'nullable|file|mimes:' . \App\Services\Financeiro::COMPROVANTE_MIMES . '|max:' . \App\Services\Financeiro::COMPROVANTE_MAX_KB,
+        ], [
+            'conta_id.required' => 'Escolha de qual conta saiu o pagamento.',
+            'comprovante.mimes' => 'Comprovante: envie foto (JPG/PNG) ou PDF.',
+            'comprovante.max' => 'Comprovante muito grande (máx. 8 MB).',
+        ]);
+        $conta = \App\Models\FinConta::where('empresa_id', $item->empresa_id)->where('ativo', 1)->findOrFail((int) $request->conta_id);
+        $valor = \App\Services\Financeiro::valorBr($request->valor_pago);
         try {
-            $item->valor_pago = __convert_value_bd($request->valor_pago);
-            $item->status = true;
-            $item->data_pagamento = $request->data_pagamento;
-            $item->tipo_pagamento = $request->tipo_pagamento;
-            $item->save();
-            session()->flash("flash_sucesso", "Conta a paga!");
-        } catch (\Exception $e) {
-            session()->flash("flash_erro", "Algo deu errado: " . $e->getMessage());
+            \App\Services\Financeiro::pagar($item, $valor, $request->data_pagamento, $conta, [
+                'forma_pagamento' => $request->tipo_pagamento,
+                'comprovante' => \App\Services\Financeiro::salvarComprovante($request->file('comprovante'), $item->empresa_id),
+            ]);
+            $item->refresh();
+            $falta = \App\Services\Financeiro::restante($item);
+            session()->flash('flash_sucesso', $item->status
+                ? 'Conta quitada! Pagamento de R$ ' . __moeda($valor) . ' saiu de ' . $conta->nome . '.'
+                : 'Pagamento parcial de R$ ' . __moeda($valor) . ' registrado. Falta R$ ' . __moeda($falta) . '.');
+        } catch (\Throwable $e) {
+            session()->flash('flash_erro', 'Não foi possível registrar: ' . $e->getMessage());
             __saveLogError($e, request()->empresa_id);
+            return back()->withInput();
         }
-        return redirect()->route('conta-pagar.index');
+        return $item->status ? redirect()->route('conta-pagar.index') : redirect()->route('conta-pagar.pay', $item->id);
     }
 }

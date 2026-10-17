@@ -60,6 +60,10 @@
                                 <span class="input-group-text">%</span>
                             </div>
                         </div>
+                        <div class="col-6 col-md-2">
+                            <label class="form-label">Vencimento do DIFAL</label>
+                            <input type="date" class="form-control" name="notas[{{ $ni }}][difal_vencimento]" value="{{ now()->endOfMonth()->format('Y-m-d') }}" title="Com DIFAL, o ERP cria uma conta a pagar com este vencimento">
+                        </div>
                         <div class="col-6 col-md-3">
                             <label class="form-label">Outros custos desta nota</label>
                             <div class="input-group">
@@ -67,9 +71,9 @@
                                 <input class="form-control ef-outros" name="notas[{{ $ni }}][outros_custos]" inputmode="decimal" placeholder="0,00">
                             </div>
                         </div>
-                        <div class="col-12 col-md-7 ef-sub ef-resumo-nota pb-2"></div>
+                        <div class="col-12 col-md-5 ef-sub ef-resumo-nota pb-2"></div>
                     </div>
-                    <div class="ef-sub mt-1">DIFAL: % sobre o valor da mercadoria de cada item (sem o ICMS-ST). Outros custos (frete pago à parte, taxas…): divididos entre os itens lançados pelo valor de cada um.</div>
+                    <div class="ef-sub mt-1">DIFAL: % sobre o valor da mercadoria de cada item (sem o ICMS-ST); gera uma conta a pagar "DIFAL" desta nota. Outros custos (frete pago à parte, taxas…): divididos entre os itens lançados pelo valor de cada um.</div>
                     <div class="row g-2 mt-2 align-items-end ef-precificar">
                         <div class="col-12 col-md-2">
                             <label class="form-label">Sugerir preço por</label>

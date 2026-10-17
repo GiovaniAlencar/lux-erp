@@ -260,8 +260,8 @@
                             {!! Form::select(
                             'tipo_pagamento',
                             'Tipo de pagamento',
-                            App\Models\Venda::tiposPagamento(),
-                            session()->hasOldInput() ? $__vs('tipo_pagamento') : (isset($item) ? $item->tipo_pagamento : null)
+                            App\Models\Venda::tiposPagamentoVenda(session()->hasOldInput() ? $__vs('tipo_pagamento') : (isset($item) ? $item->tipo_pagamento : null)),
+                            session()->hasOldInput() ? $__vs('tipo_pagamento') : (isset($item) ? $item->tipo_pagamento : '17')
                             )->attrs([
                             'class' => 'select2'
                             ]) !!}
@@ -390,10 +390,68 @@
                             </tfoot>
                         </table>
                     </div>
+                    {{-- quanto falta para fechar o total da venda (atualiza sozinho) --}}
+                    <div id="lux-pay-restante" class="lux-pay-restante d-none" role="status" aria-live="polite"></div>
                 </div>
             </div>
         </div>
     </div>
     <input type="hidden" value="" id="type" name="type">
+<script>
+(function () {
+    function num(t) {
+        t = String(t == null ? '' : t).replace(/[^\d,.-]/g, '');
+        if (t.indexOf(',') >= 0) t = t.replace(/\./g, '').replace(',', '.');
+        var n = parseFloat(t);
+        return isNaN(n) ? 0 : Math.round(n * 100) / 100;
+    }
+    function moeda(n) {
+        return 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    var ultimoQtd = -1;
+    function atualizar() {
+        var box = document.getElementById('lux-pay-restante');
+        if (!box) return;
+        var totNode = document.querySelector('.total-venda');
+        var total = totNode ? num(totNode.textContent) : 0;
+        var linhas = document.querySelectorAll('.table-payment tbody tr');
+        var pago = 0;
+        document.querySelectorAll('.table-payment .valor_integral').forEach(function (i) { pago += num(i.value); });
+        pago = Math.round(pago * 100) / 100;
+        var falta = Math.round((total - pago) * 100) / 100;
+
+        if (!linhas.length || total <= 0) {
+            box.className = 'lux-pay-restante d-none';
+            box.textContent = '';
+        } else if (falta > 0.009) {
+            box.className = 'lux-pay-restante is-falta';
+            box.innerHTML = '<i class="bi bi-exclamation-circle"></i><span>Falta <strong>' + moeda(falta) + '</strong> para completar o total da venda (' + moeda(total) + ').</span>';
+        } else if (falta < -0.009) {
+            box.className = 'lux-pay-restante is-excede';
+            box.innerHTML = '<i class="bi bi-x-circle"></i><span>As parcelas passam do total em <strong>' + moeda(-falta) + '</strong>.</span>';
+        } else {
+            box.className = 'lux-pay-restante is-ok';
+            box.innerHTML = '<i class="bi bi-check-circle"></i><span>Pagamento completo: ' + moeda(total) + '.</span>';
+        }
+        // depois de adicionar uma parcela, já sugere o valor que falta na próxima
+        if (linhas.length > ultimoQtd && ultimoQtd >= 0 && falta > 0.009) {
+            var inp = document.getElementById('inp-valor_integral');
+            if (inp && !inp.disabled) inp.value = falta.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        ultimoQtd = linhas.length;
+    }
+    var agendado = null;
+    function agendar() { clearTimeout(agendado); agendado = setTimeout(atualizar, 150); }
+    document.addEventListener('DOMContentLoaded', function () {
+        var tot = document.querySelector('.total-venda');
+        var tb = document.querySelector('.table-payment tbody');
+        var obs = new MutationObserver(agendar);
+        if (tot) obs.observe(tot, { childList: true, characterData: true, subtree: true });
+        if (tb) obs.observe(tb, { childList: true, subtree: true });
+        document.addEventListener('input', function (e) { if (e.target.closest && e.target.closest('.table-payment')) agendar(); });
+        setTimeout(atualizar, 900);
+    });
+})();
+</script>
 </div>
 <!-- Ações finais continuam no card de Resumo na coluna direita -->

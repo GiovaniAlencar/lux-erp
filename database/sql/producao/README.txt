@@ -22,6 +22,9 @@ Ordem sugerida:
 19) 23_site_esgotados_avise_me.sql (esgotados no site + "Avise-me quando chegar"; requer 21 e 22)
 20) 24_site_recuperar_senha.sql ("Esqueci minha senha" do site; tokens guardados só como hash)
 21) 25_produtos_reposto_em.sql (vitrine "Reposições" do site; requer 23)
+22) 26_financeiro_contas_extrato.sql (contas com saldo/extrato, pagamentos parciais com comprovante)
+23) 27_venda_comprovantes.sql (vendedor anexa comprovante de pagamento na venda)
+24) 28_comprovante_venda_financeiro.sql (comprovante da venda lança a entrada no extrato da conta; requer 26 e 27)
 
 Deploy completo (SQL + lista de arquivos FTP): ver DEPLOY_JUN2026.txt
 

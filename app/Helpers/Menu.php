@@ -101,6 +101,8 @@ class Menu
 				'titulo' => 'Financeiro',
 				'icone' => 'bx bx-dollar',
 				'subs' => [
+					$item('Contas e saldos', 'fin.contas'),
+					$item('Extrato', 'fin.extrato'),
 					$item('Contas a pagar', 'conta-pagar.index'),
 					$item('Contas a receber', 'conta-receber.index'),
 					$item('Movimentação de caixa', 'fluxoCaixa.index'),

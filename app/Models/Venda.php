@@ -120,6 +120,24 @@ class Venda extends Model
         ];
     }
 
+    /**
+     * Tipos oferecidos na tela de venda da LUX: só PIX, cartão e dinheiro.
+     * (A lista completa continua valendo para NF-e, relatórios e vendas antigas.)
+     * Se a venda já tem outro tipo gravado, ele continua aparecendo para não se perder.
+     */
+    public static function tiposPagamentoVenda($atual = null): array
+    {
+        $lista = [
+            '17' => 'PIX',
+            '03' => 'Cartão',
+            '01' => 'Dinheiro',
+        ];
+        if ($atual !== null && $atual !== '' && !isset($lista[$atual]) && isset(self::tiposPagamento()[$atual])) {
+            $lista[$atual] = self::tiposPagamento()[$atual];
+        }
+        return $lista;
+    }
+
     public static function bandeiras()
     {
         return [

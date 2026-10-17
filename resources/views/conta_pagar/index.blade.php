@@ -88,7 +88,7 @@
                                     @forelse($data as $item)
                                     <tr>
                                         <td>{{ $item->fornecedor ? $item->fornecedor->razao_social : '--' }}</td>
-                                        <td>{{ $item->categoria->nome }}</td>
+                                        <td>{{ optional($item->categoria)->nome ?? '--' }}</td>
                                         @if(empresaComFilial())
                                         <td>
                                             {{ $item->filial_id ? $item->filial->descricao : 'Matriz' }}
@@ -101,18 +101,24 @@
                                         <td>{{ $item->status ? __data_pt($item->data_pagamento, false) : '--' }}</td>
                                         <td>
                                             @if($item->status)
-                                            <span class="btn btn-success position-relative me-lg-5 btn-sm">
-                                                <i class="bx bx-like"></i> Pago
-                                            </span>
+                                            <span class="badge bg-success">Pago</span>
+                                            @elseif((float) $item->valor_pago > 0)
+                                            <span class="badge bg-info">Parcial</span>
+                                            <div class="small text-muted">falta R$ {{ __moeda(max(0, $item->valor_integral - $item->valor_pago)) }}</div>
+                                            @elseif($item->data_vencimento < date('Y-m-d'))
+                                            <span class="badge bg-danger">Vencida</span>
                                             @else
-                                            <span class="btn btn-warning position-relative me-lg-5 btn-sm">
-                                                <i class="bx bx-error"></i> Pendente
-                                            </span>
+                                            <span class="badge bg-warning">Pendente</span>
                                             @endif
                                         </td>
                                         <td>
                                             <form action="{{ route('conta-pagar.destroy', $item->id) }}" method="post" id="form-{{$item->id}}">
                                                 @method('delete')
+                                                @if($item->status)
+                                                <a title="Ver pagamentos" href="{{ route('conta-pagar.pay', $item) }}" class="btn btn-light btn-sm">
+                                                    <i class="bx bx-receipt"></i>
+                                                </a>
+                                                @endif
                                                 @if(!$item->status)
                                                 <a title="Editar" href="{{ route('conta-pagar.edit', $item) }}" class="btn btn-warning btn-sm text-white">
                                                     <i class="bx bx-edit"></i>

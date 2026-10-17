@@ -6,7 +6,8 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="color-scheme" content="light dark">
-        <!--favicon-->
+        <!--favicon / app instalável-->
+        @include('default._pwa')
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
@@ -41,7 +42,7 @@
         <title>{{$title}}</title>
 
         {{-- tema único da LUX (claro/escuro): padroniza todas as telas --}}
-        <link href="/assets/css/lux-erp.css?v=2" rel="stylesheet" />
+        <link href="/assets/css/lux-erp.css?v=5" rel="stylesheet" />
 
         @yield('css')
     </head>
@@ -390,7 +391,8 @@
 <script type="text/javascript" src="/js/jquery.mask.min.js"></script>
 <script src="/assets/js/select2.min.js"></script>
 <script src="/assets/js/app.js"></script>
-<script src="/js/main.js"></script>
+<script src="/js/main.js?v=20261017"></script>
+<script src="/js/lux-dinheiro.js?v=1"></script>
 <script src="/js/theme.js"></script>
 <script>
     // tema claro/escuro (fica salvo no usuário)

@@ -128,24 +128,45 @@ class ProdutoController extends Controller
                 $q->where('produtos.nome', 'like', "%{$termo}%");
             }
         })
-        ->with('estoque')
+        ->with(['estoque', 'categoria:id,nome'])
+        ->limit(300)
         ->get();
-        $permissaoAcesso = __getLocaisUsarioLogado($request->usuario_id);
+
+        $marcas = \App\Models\Marca::whereIn('id', $data->pluck('marca_id')->filter()->unique())->pluck('nome', 'id');
+
         $temp = [];
         foreach ($data as $p) {
-            $locais = json_decode($p->locais);
-            $p->estoqueAtual = $p->estoquePorLocalPavaVenda($filial_id);
-            if($filial_id){
-                foreach ($locais as $l) {
-                    if ($l == $filial_id) {
-                        array_push($temp, $p);
-                    }
+            if ($filial_id) {
+                $locais = json_decode($p->locais) ?: [];
+                if (!in_array($filial_id, $locais)) {
+                    continue;
                 }
-            }else{
-                array_push($temp, $p);
             }
+            $qtd = $filial_id
+                ? (float) str_replace(',', '', (string) $p->estoquePorLocalPavaVenda($filial_id))
+                : (float) optional($p->estoque)->quantidade;
+
+            // só o que a busca precisa (sem custo e dados internos do produto)
+            $temp[] = [
+                'id' => $p->id,
+                'nome' => $p->nome,
+                'str_grade' => $p->str_grade ?? '',
+                'valor_venda' => $p->valor_venda,
+                'estoque' => ['quantidade' => $qtd],
+                'marca' => $p->marca_id ? ($marcas[$p->marca_id] ?? null) : null,
+                'categoria' => optional($p->categoria)->nome,
+                'fiscal' => (bool) $p->fiscal,
+            ];
         }
-        return response()->json($temp, 200);
+
+        // primeiro os que têm estoque; dentro de cada grupo, por nome
+        usort($temp, function ($a, $b) {
+            $ta = $a['estoque']['quantidade'] > 0 ? 0 : 1;
+            $tb = $b['estoque']['quantidade'] > 0 ? 0 : 1;
+            return $ta <=> $tb ?: strcasecmp($a['nome'], $b['nome']);
+        });
+
+        return response()->json(array_slice($temp, 0, 80), 200);
     }
 
     public function find($id)

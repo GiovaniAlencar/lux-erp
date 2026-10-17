@@ -85,12 +85,28 @@ class ProductController extends Controller
             : '(SELECT COALESCE(SUM(e.quantidade), 0) FROM estoques e WHERE e.produto_id = produtos.id)';
 
         $perPage = max(10, min(100, (int) ($request->get('per_page') ?: 50)));
+        $baixoSql = "($estoqueSumSql > 0 AND $estoqueSumSql <= COALESCE(NULLIF(produtos.estoque_minimo, 0), 5))";
+
+        // ordenação (lista fechada: nada do usuário entra no SQL)
+        $ordens = [
+            'recentes' => ['produtos.id', 'desc'],
+            'nome' => ['produtos.nome', 'asc'],
+            'nome_desc' => ['produtos.nome', 'desc'],
+            'estoque' => ['estoque_total', 'asc'],
+            'estoque_desc' => ['estoque_total', 'desc'],
+            'preco' => ['produtos.valor_venda', 'asc'],
+            'preco_desc' => ['produtos.valor_venda', 'desc'],
+            'venda' => ['ultima_saida_at', 'asc'],
+            'venda_desc' => ['ultima_saida_at', 'desc'],
+        ];
+        $ordem = array_key_exists($request->get('ordem'), $ordens) ? $request->get('ordem') : 'recentes';
 
         $query = Produto::query()
             ->where('produtos.empresa_id', $request->empresa_id)
             ->select('produtos.*')
             ->selectRaw("$ultimaCompraSql as ultima_compra_at")
             ->selectRaw("$ultimaSaidaSql as ultima_saida_at")
+            ->selectRaw("$estoqueSumSql as estoque_total")
             ->when($status === 'ativos', fn ($q) => $q->where('produtos.inativo', 0))
             ->when($status === 'inativos', fn ($q) => $q->where('produtos.inativo', 1))
             ->when(in_array($request->get('fiscal'), ['0', '1'], true), fn ($q) => $q->where('produtos.fiscal', (int) $request->get('fiscal')))
@@ -116,6 +132,8 @@ class ProductController extends Controller
                 });
             })
             ->when($estoqueFaixa === 'zerado', fn ($q) => $q->whereRaw("$estoqueSumSql = 0"))
+            ->when($estoqueFaixa === 'sem', fn ($q) => $q->whereRaw("$estoqueSumSql <= 0"))
+            ->when($estoqueFaixa === 'baixo', fn ($q) => $q->whereRaw($baixoSql))
             ->when($estoqueFaixa === 'negativo', fn ($q) => $q->whereRaw("$estoqueSumSql < 0"))
             ->when($estoqueFaixa === '0_10', fn ($q) => $q->whereRaw("$estoqueSumSql >= 0 AND $estoqueSumSql <= 10"))
             ->when($estoqueFaixa === '11_50', fn ($q) => $q->whereRaw("$estoqueSumSql >= 11 AND $estoqueSumSql <= 50"))
@@ -128,9 +146,23 @@ class ProductController extends Controller
             ->when(filled($ultimaSaidaDe), fn ($q) => $q->whereRaw("DATE($ultimaSaidaSql) >= ?", [$ultimaSaidaDe]))
             ->when(filled($ultimaSaidaAte), fn ($q) => $q->whereRaw("DATE($ultimaSaidaSql) <= ?", [$ultimaSaidaAte]))
             ->with('categoria:id,nome')
+            ->orderBy($ordens[$ordem][0], $ordens[$ordem][1])
             ->orderByDesc('produtos.id');
 
         $data = $query->paginate($perPage)->withQueryString();
+
+        // atalhos do topo (contagem dos produtos ativos)
+        $base = fn () => Produto::where('produtos.empresa_id', $request->empresa_id)->where('produtos.inativo', 0);
+        $parado = now()->subDays(30)->format('Y-m-d H:i:s');
+        $resumo = [
+            'ativos' => $base()->count(),
+            'sem' => $base()->whereRaw("$estoqueSumSql <= 0")->count(),
+            'baixo' => $base()->whereRaw($baixoSql)->count(),
+            'parados' => $base()->whereRaw("$estoqueSumSql > 0")->whereRaw("COALESCE($ultimaSaidaSql, '1970-01-01 00:00:00') < ?", [$parado])->count(),
+            'inativos' => Produto::where('empresa_id', $request->empresa_id)->where('inativo', 1)->count(),
+        ];
+        $comFilial = empresaComFilial();
+        $marcasNome = $marcas->pluck('nome', 'id');
 
         $filtrosAvancadosAtivos = filled($semVendasDias) || filled($ultimaSaidaDe) || filled($ultimaSaidaAte);
 
@@ -140,7 +172,11 @@ class ProductController extends Controller
             'marcas',
             'filial_id',
             'filtrosAvancadosAtivos',
-            'perPage'
+            'perPage',
+            'ordem',
+            'resumo',
+            'comFilial',
+            'marcasNome'
         ));
     }
 

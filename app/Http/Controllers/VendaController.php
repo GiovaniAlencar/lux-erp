@@ -210,7 +210,19 @@ class VendaController extends Controller
                 ->keyBy('venda_id');
         }
 
+        // quantos comprovantes de pagamento cada venda da página tem (tabela do SQL 27)
+        $comprovantesPorVenda = [];
+        if (!empty($vendaIdsPagina) && \Illuminate\Support\Facades\Schema::hasTable('venda_comprovantes')) {
+            $comprovantesPorVenda = \App\Models\VendaComprovante::where('empresa_id', $request->empresa_id)
+                ->whereIn('venda_id', $vendaIdsPagina)
+                ->selectRaw('venda_id, COUNT(*) AS qtd')
+                ->groupBy('venda_id')
+                ->pluck('qtd', 'venda_id')
+                ->all();
+        }
+
         return view('vendas.index', compact(
+            'comprovantesPorVenda',
             'data',
             'config',
             'contigencia',

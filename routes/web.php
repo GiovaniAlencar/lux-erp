@@ -593,6 +593,16 @@ Route::middleware([
 
     Route::resource('categoria-conta', 'CategoriaContaController');
 
+    Route::group(['prefix' => 'financeiro-lux'], function () {
+        Route::get('/contas', 'FinLuxController@contas')->name('fin.contas');
+        Route::post('/contas', 'FinLuxController@salvarConta')->name('fin.contas.salvar');
+        Route::get('/extrato', 'FinLuxController@extrato')->name('fin.extrato');
+        Route::post('/lancar', 'FinLuxController@lancar')->name('fin.lancar');
+        Route::post('/transferir', 'FinLuxController@transferir')->name('fin.transferir');
+        Route::post('/movimento/{id}/estornar', 'FinLuxController@estornar')->name('fin.estornar');
+        Route::get('/movimento/{id}/comprovante', 'FinLuxController@comprovante')->name('fin.comprovante');
+    });
+
     Route::resource('conta-pagar', 'ContaPagarController');
 
     Route::group(['prefix' => 'contasPagar'], function () {
@@ -893,6 +903,14 @@ Route::middleware([
         Route::get('/state-fiscal/{id}', 'NfeController@estadoFiscal')->name('vendas.state-fiscal');
         Route::put('/clone-put/{id}', 'VendaController@clonarPut')->name('vendas.clone-put');
         Route::get('/carne', 'CarneController@index')->name('vendas.carne');
+    });
+
+    // comprovantes de pagamento anexados à venda
+    Route::group(['prefix' => 'vendas-comprovantes'], function () {
+        Route::get('/venda/{id}', 'VendaComprovanteController@listar')->name('vendas-comprovantes.listar');
+        Route::post('/venda/{id}', 'VendaComprovanteController@salvar')->name('vendas-comprovantes.salvar');
+        Route::get('/{cid}/arquivo', 'VendaComprovanteController@abrir')->name('vendas-comprovantes.abrir');
+        Route::delete('/{cid}', 'VendaComprovanteController@excluir')->name('vendas-comprovantes.excluir');
     });
 
 

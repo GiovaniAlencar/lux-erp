@@ -646,3 +646,40 @@ html body #lux-vendas-index .lux-vendas-filter-compact .select2-container .selec
 html body #lux-vendas-index .lux-vendas-filter-compact .form-label,
 html body #lux-vendas-index .lux-vendas-filter-compact label { margin-bottom: 5px !important; font-size: 12.5px !important; }
 html body #lux-vendas-index .lux-vendas-filter-compact .form-group { margin-bottom: 0 !important; }
+
+/* ---------- Venda: quanto falta no pagamento ---------- */
+.lux-pay-restante{display:flex;align-items:flex-start;gap:.5rem;margin-top:.75rem;padding:.6rem .8rem;border-radius:8px;font-size:.875rem;border:1px solid transparent;line-height:1.35}
+.lux-pay-restante i{font-size:1rem;line-height:1.2}
+.lux-pay-restante.is-falta{background:#fff7e6;border-color:#f5c26b;color:#7a4b00}
+.lux-pay-restante.is-excede{background:#fdecec;border-color:#f1a5a5;color:#8a1c1c}
+.lux-pay-restante.is-ok{background:#ebf7ee;border-color:#9fd5ab;color:#1d5e2c}
+html.dark-theme .lux-pay-restante.is-falta{background:rgba(245,166,35,.12);border-color:rgba(245,166,35,.45);color:#f6c56f}
+html.dark-theme .lux-pay-restante.is-excede{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.45);color:#f8a3a3}
+html.dark-theme .lux-pay-restante.is-ok{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.4);color:#86e0a5}
+
+/* contador de comprovantes no botão da venda */
+.lux-comp-badge{position:absolute;top:-6px;right:-6px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:#16a34a;color:#fff;font-size:10px;font-weight:700;line-height:17px;text-align:center;box-shadow:0 0 0 2px var(--lx-surface,#fff)}
+html.dark-theme .lux-comp-badge{box-shadow:0 0 0 2px #111}
+
+/* ---------- Busca de produto (select2) em 2 linhas ---------- */
+.lux-prod-dd .select2-results__option { padding: .5rem .75rem; border-bottom: 1px solid var(--lx-border); }
+.lux-prod-dd .select2-results > .select2-results__options { max-height: 360px; }
+.lux-po-l1, .lux-po-l2 { display: flex; justify-content: space-between; align-items: baseline; gap: .75rem; }
+.lux-po-nome { font-weight: 600; font-size: .875rem; line-height: 1.3; color: var(--lx-text); }
+.lux-po-preco { font-weight: 700; font-size: .875rem; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--lx-text); }
+.lux-po-l2 { margin-top: .15rem; font-size: .75rem; }
+.lux-po-meta { color: var(--lx-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lux-po-est { white-space: nowrap; font-weight: 600; padding: 0 .45rem; border-radius: 999px; font-variant-numeric: tabular-nums; }
+.lux-po-est.ok { background: var(--lx-success-soft); color: var(--lx-success); }
+.lux-po-est.zero { background: var(--lx-danger-soft); color: var(--lx-danger); }
+.lux-po-f { display: inline-block; padding: 0 .3rem; border-radius: 3px; font-size: .62rem; font-weight: 700; background: var(--lx-info-soft); color: var(--lx-info); }
+.lux-po.is-zero .lux-po-nome, .lux-po.is-zero .lux-po-preco { opacity: .6; }
+.lux-prod-dd .select2-results__option--highlighted .lux-po-nome,
+.lux-prod-dd .select2-results__option--highlighted .lux-po-preco { color: inherit; }
+.lux-prod-dd .select2-results__option--highlighted .lux-po-meta { color: inherit; opacity: .8; }
+
+/* botões de escolha (btn-check): o marcado precisa aparecer preenchido */
+.btn-check:checked + .btn-outline-danger, .btn-check:active + .btn-outline-danger { background: var(--lx-danger) !important; border-color: var(--lx-danger) !important; color: #fff !important; }
+.btn-check:checked + .btn-outline-success, .btn-check:active + .btn-outline-success { background: var(--lx-success) !important; border-color: var(--lx-success) !important; color: #fff !important; }
+.btn-check:checked + .btn-outline-primary, .btn-check:checked + .btn-outline-secondary { background: var(--lx-primary) !important; border-color: var(--lx-primary) !important; color: var(--lx-on-primary) !important; }
+html.dark-theme .btn-check:checked + .btn-outline-danger, html.dark-theme .btn-check:checked + .btn-outline-success { color: #0b0b0c !important; }

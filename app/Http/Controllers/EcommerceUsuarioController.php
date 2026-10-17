@@ -16,6 +16,8 @@ class EcommerceUsuarioController extends Controller
             ->when($request->status, function ($q) use ($request) {
                 return $q->where('status', $request->status);
             })
+            ->when($request->novos === 'hoje', fn ($q) => $q->where('created_at', '>=', now()->startOfDay()))
+            ->when($request->novos === '7d', fn ($q) => $q->where('created_at', '>=', now()->subDays(7)))
             ->when($request->q, function ($q) use ($request) {
                 $term = $request->q;
                 return $q->where(function ($w) use ($term) {
@@ -29,7 +31,24 @@ class EcommerceUsuarioController extends Controller
             ->paginate(env('PAGINACAO', 30));
 
         $statusLabels = EcommerceUser::statusLabels();
-        return view('ecommerce_usuarios.index', compact('data', 'statusLabels'));
+
+        // números do topo
+        $inicio7 = now()->subDays(7);
+        $inicio14 = now()->subDays(14);
+        $pendenteMaisAntigo = EcommerceUser::where('status', 'pending')->min('created_at');
+        $resumo = [
+            'aprovados' => EcommerceUser::where('status', 'active')->count(),
+            'acessaram_7d' => EcommerceUser::where('status', 'active')->where('last_login', '>=', $inicio7)->count(),
+            'pendentes' => EcommerceUser::where('status', 'pending')->count(),
+            'pendente_dias' => $pendenteMaisAntigo ? (int) \Carbon\Carbon::parse($pendenteMaisAntigo)->startOfDay()->diffInDays(now()->startOfDay()) : null,
+            'hoje' => EcommerceUser::where('created_at', '>=', now()->startOfDay())->count(),
+            'ontem' => EcommerceUser::whereBetween('created_at', [now()->subDay()->startOfDay(), now()->startOfDay()])->count(),
+            'semana' => EcommerceUser::where('created_at', '>=', $inicio7)->count(),
+            'semana_anterior' => EcommerceUser::whereBetween('created_at', [$inicio14, $inicio7])->count(),
+            'aprovados_semana' => EcommerceUser::where('approved_at', '>=', $inicio7)->count(),
+        ];
+
+        return view('ecommerce_usuarios.index', compact('data', 'statusLabels', 'resumo'));
     }
 
     public function show($id)

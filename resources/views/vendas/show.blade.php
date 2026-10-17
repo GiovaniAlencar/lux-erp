@@ -1,28 +1,13 @@
-@extends('default.layout', ['title' => 'Vendas'])
-
-@section('css')
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-    tailwind.config = {
-        darkMode: 'class',
-        important: '#lux-venda-show',
-        corePlugins: { preflight: false },
-        theme: {
-            extend: {
-                fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
-            },
-        },
-    };
-</script>
-<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
-@endsection
+@extends('default.layout', ['title' => 'Venda #' . $item->id])
 
 @section('content')
 @php
     $stPed = $item->status_pedido ?? 'aguardando_confirmacao';
     $stPag = $item->status_pagamento ?? 'pendente';
+    $estNfe = $item->estado_emissao ?? 'novo';
     $lblStatusPedido = [
         'aguardando_confirmacao' => 'Aguardando confirmação',
+        'em_elaboracao' => 'Aguardando confirmação',
         'confirmado' => 'Confirmado',
         'em_separacao' => 'Em separação',
         'separado' => 'Separado',
@@ -32,38 +17,48 @@
         'entregue' => 'Entregue',
         'cancelada' => 'Cancelada',
     ];
-    $lblStatusPagamento = [
-        'pendente' => 'Pagamento pendente',
-        'pago' => 'Pago',
-        'parcial' => 'Parcial',
-        'estornado' => 'Estornado',
+    $tomPedido = [
+        'aguardando_confirmacao' => 'warning', 'em_elaboracao' => 'warning', 'confirmado' => 'info',
+        'em_separacao' => 'info', 'separado' => 'success', 'alteracao_pendente' => 'danger',
+        'em_rota_entrega' => 'info', 'ocorrencia_entrega' => 'danger', 'entregue' => 'success', 'cancelada' => 'muted',
     ];
-    $twPedido = [
-        'aguardando_confirmacao' => 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-        'confirmado' => 'bg-sky-500/15 text-sky-300 border-sky-500/30',
-        'em_separacao' => 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30',
-        'separado' => 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-        'alteracao_pendente' => 'bg-rose-500/15 text-rose-300 border-rose-500/30',
-        'em_rota_entrega' => 'bg-violet-500/15 text-violet-300 border-violet-500/30',
-        'ocorrencia_entrega' => 'bg-rose-500/15 text-rose-300 border-rose-500/30',
-        'entregue' => 'bg-teal-500/15 text-teal-300 border-teal-500/30',
-        'cancelada' => 'bg-gray-500/20 text-gray-400 border-gray-600',
+    $lblStatusPagamento = ['pendente' => 'Pagamento pendente', 'pago' => 'Pago', 'parcial' => 'Pago em parte', 'estornado' => 'Estornado'];
+    $tomPagamento = ['pendente' => 'warning', 'pago' => 'success', 'parcial' => 'info', 'estornado' => 'muted'];
+    $tomNfe = ['novo' => 'muted', 'aprovado' => 'success', 'rejeitado' => 'danger', 'cancelado' => 'muted'];
+    $icoPedido = [
+        'aguardando_confirmacao' => 'hourglass-split', 'em_elaboracao' => 'hourglass-split', 'confirmado' => 'check2-circle',
+        'em_separacao' => 'box-seam', 'separado' => 'box2-fill', 'alteracao_pendente' => 'exclamation-triangle',
+        'em_rota_entrega' => 'truck', 'ocorrencia_entrega' => 'exclamation-octagon', 'entregue' => 'house-check', 'cancelada' => 'x-circle',
     ];
-    $twPagamento = [
-        'pendente' => 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-        'pago' => 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-        'parcial' => 'bg-sky-500/15 text-sky-300 border-sky-500/30',
-        'estornado' => 'bg-gray-500/20 text-gray-400 border-gray-600',
-    ];
-    $twNfe = [
-        'novo' => 'bg-gray-500/20 text-gray-300 border-gray-600',
-        'aprovado' => 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-        'rejeitado' => 'bg-rose-500/15 text-rose-300 border-rose-500/30',
-        'cancelado' => 'bg-gray-500/20 text-gray-400 border-gray-600',
-    ];
-    $estNfe = $item->estado_emissao ?? 'novo';
-    $somaItensCalc = $item->itens->sum(fn ($p) => (float) $p->quantidade * (float) $p->valor);
-    $totalComFrete = (float) $item->valor_total + (float) $item->frete;
+
+    // valores: valor_total é a soma dos itens; o total cobrado considera desconto, acréscimo e frete
+    $attrs = $item->getAttributes();
+    $vFrete = (float) ($attrs['frete'] ?? 0);
+    $vDesc = (float) ($item->desconto ?? 0);
+    $vAcr = (float) ($item->acrescimo ?? 0);
+    $somaItens = (float) $item->itens->sum(fn ($p) => (float) $p->quantidade * (float) $p->valor);
+    $totalVenda = round((float) $item->valor_total - $vDesc + $vAcr + $vFrete, 2);
+    $qtdUnidades = (float) $item->itens->sum(fn ($p) => (float) $p->quantidade);
+
+    $qtdFmt = fn ($v) => rtrim(rtrim(number_format((float) $v, 3, ',', '.'), '0'), ',');
+    $dataBr = function ($d, $hora = false) {
+        if (empty($d)) return null;
+        try { return \Carbon\Carbon::parse($d)->format($hora ? 'd/m/Y \à\s H:i' : 'd/m/Y'); } catch (\Throwable $e) { return (string) $d; }
+    };
+
+    // comprovantes anexados (SQL 27)
+    $comprovantes = \Illuminate\Support\Facades\Schema::hasTable('venda_comprovantes')
+        ? \App\Models\VendaComprovante::where('empresa_id', $item->empresa_id)->where('venda_id', $item->id)->get(['id', 'valor'])
+        : collect();
+    $comprovado = round((float) $comprovantes->sum('valor'), 2);
+    $faltaComprovar = max(0, round($totalVenda - $comprovado, 2));
+
+    $cli = $item->cliente;
+    $fone = $cli ? ($cli->celular ?: $cli->telefone) : null;
+    $foneWa = $fone ? preg_replace('/\D/', '', $fone) : null;
+    if ($foneWa && strlen($foneWa) <= 11) $foneWa = '55' . $foneWa;
+    $endereco = $cli ? trim(implode(', ', array_filter([$cli->rua, $cli->numero, $cli->bairro]))) : '';
+
     $rotuloAcaoAuditoria = [
         'venda_criada' => 'Venda criada',
         'venda_alterada' => 'Venda alterada',
@@ -81,473 +76,490 @@
         'nf_externa_emitida' => 'NF-e fiscal emitida',
         'nf_externa_pendente' => 'NF-e fiscal pendente',
     ];
+    $tomAuditoria = function (string $acao) {
+        if (str_contains($acao, 'caixa') || str_contains($acao, 'ocorrencia')) return 'warning';
+        if ($acao === 'venda_criada' || str_contains($acao, 'entregue') || str_contains($acao, 'pago') || str_contains($acao, 'confirmada')) return 'success';
+        if ($acao === 'venda_alterada') return 'info';
+        return 'gold';
+    };
+    $podeFichaShow = in_array($stPed, ['confirmado', 'em_separacao', 'separado', 'alteracao_pendente', 'em_rota_entrega', 'entregue'], true);
+    $divFiscal = $item->divisaoFiscal();
+    $sitNf = $item->situacaoNfExterna($divFiscal);
 @endphp
 
-{{-- Escopo isolado: largura total da área útil (col-12 + sem max-width) --}}
-<div id="lux-venda-show" class="dark text-gray-100 font-sans antialiased col-12 w-100 px-0">
-    <div class="min-h-[calc(100vh-8rem)] w-full max-w-none rounded-xl bg-gray-900 border border-gray-800 shadow-md p-4 sm:p-5 lg:p-6 xl:p-8">
+<style>
+    .vd { color: var(--lx-text); }
+    .vd-crumb { font-size: .8rem; color: var(--lx-muted); margin-bottom: .35rem; }
+    .vd-crumb a { color: var(--lx-muted); text-decoration: none; }
+    .vd-crumb a:hover { color: var(--lx-text); }
+    .vd-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
+    .vd-title { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+    .vd-title h1 { font-size: 1.6rem; font-weight: 700; margin: 0; letter-spacing: -.02em; }
+    .vd-sub { margin-top: .35rem; color: var(--lx-muted); font-size: .85rem; display: flex; flex-wrap: wrap; gap: .25rem .9rem; }
+    .vd-sub i { margin-right: .25rem; }
+    .vd-pills { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .75rem; }
+    .vd-pill { display: inline-flex; align-items: center; gap: .35rem; padding: .28rem .7rem; border-radius: 999px; font-size: .78rem; font-weight: 600; border: 1px solid transparent; }
+    .vd-pill.t-success { background: var(--lx-success-soft); color: var(--lx-success); }
+    .vd-pill.t-warning { background: var(--lx-warning-soft); color: var(--lx-warning); }
+    .vd-pill.t-danger { background: var(--lx-danger-soft); color: var(--lx-danger); }
+    .vd-pill.t-info { background: var(--lx-info-soft); color: var(--lx-info); }
+    .vd-pill.t-muted { background: var(--lx-surface-3); color: var(--lx-muted); }
+    .vd-pill.t-gold { background: var(--lx-gold-soft); color: var(--lx-gold-strong); }
+    button.vd-pill { cursor: pointer; border-color: var(--lx-warning); }
+    .vd-acts { display: flex; flex-wrap: wrap; gap: .5rem; }
+    .vd-acts .btn { display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap; }
+    .vd-acts .btn.disabled { opacity: .45; }
+    .vd-badge { display: inline-flex; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--lx-success); color: #fff; font-size: 11px; font-weight: 700; align-items: center; justify-content: center; }
+    html.dark-theme .vd-badge { color: #0b0b0c; }
 
-        {{-- 1. Cabeçalho --}}
-        <header class="mb-8 pb-6 border-b border-gray-800">
-            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                    <p class="text-sm font-medium text-indigo-400 uppercase tracking-wide">Detalhes da venda</p>
-                    <div class="mt-1 flex flex-wrap items-center gap-3">
-                        <h1 class="text-3xl sm:text-4xl font-semibold text-gray-100 tracking-tight">#{{ $item->id }}</h1>
-                        @if($item->fechada_caixa)
-                            <span class="inline-flex items-center gap-1 rounded-full border border-gray-600 bg-gray-800 px-3 py-1 text-xs font-medium text-gray-300">
-                                <i data-lucide="lock" class="size-3.5"></i> Fechada no caixa
-                            </span>
-                            @if(!empty($usuarioAdm))
-                                <button type="button" id="lux-venda-reabrir-caixa" data-venda="{{ $item->id }}" class="inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-200 transition hover:bg-amber-500/25" title="Permitir edição e alterações novamente">
-                                    <i data-lucide="lock-open" class="size-3.5"></i> Reabrir caixa (ADM)
-                                </button>
-                            @endif
-                        @endif
-                    </div>
-                    @if($item->pedido_nuvemshop_id)
-                        <p class="mt-2 text-sm text-gray-400">
-                            Pedido Nuvemshop —
-                            <a href="{{ route('nuvemshop-pedidos.show', [$item->pedidoNuvemShop->pedido_id]) }}" class="text-indigo-400 hover:text-indigo-300 underline-offset-2 hover:underline">ver pedido</a>
-                        </p>
+    .vd-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 1.25rem; align-items: start; }
+    .vd-main, .vd-side { display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
+    .vd-side { position: sticky; top: 84px; }
+    @media (max-width: 1199.98px) { .vd-grid { grid-template-columns: 1fr; } .vd-side { position: static; } }
+
+    .vd-card { background: var(--lx-surface); border: 1px solid var(--lx-border); border-radius: var(--lx-radius); box-shadow: var(--lx-shadow); }
+    .vd-card-h { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .85rem 1.1rem; border-bottom: 1px solid var(--lx-border); }
+    .vd-card-h h2 { font-size: .95rem; font-weight: 600; margin: 0; display: flex; align-items: center; gap: .5rem; }
+    .vd-card-h h2 i { color: var(--lx-gold); }
+    .vd-card-h .vd-h-extra { font-size: .8rem; color: var(--lx-muted); }
+    .vd-card-b { padding: 1rem 1.1rem; }
+    .vd-two { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+    @media (max-width: 767.98px) { .vd-two { grid-template-columns: 1fr; } }
+
+    .vd-dl { display: grid; grid-template-columns: 1fr 1fr; gap: .85rem 1rem; margin: 0; }
+    .vd-dl > div { min-width: 0; }
+    .vd-dl dt { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--lx-muted); margin-bottom: .15rem; }
+    .vd-dl dd { margin: 0; font-size: .9rem; color: var(--lx-text); overflow-wrap: anywhere; }
+    .vd-dl .full { grid-column: 1 / -1; }
+    .vd-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .8rem; }
+    .vd-cli-nome { font-size: 1.05rem; font-weight: 600; margin: 0 0 .15rem; }
+    .vd-cli-doc { color: var(--lx-muted); font-size: .85rem; }
+    .vd-cli-links { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .75rem; }
+    .vd-cli-links a { display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem; padding: .3rem .6rem; border-radius: 8px; border: 1px solid var(--lx-border); color: var(--lx-text-2); text-decoration: none; }
+    .vd-cli-links a:hover { border-color: var(--lx-border-strong); color: var(--lx-text); }
+    .vd-aviso { display: flex; gap: .5rem; align-items: flex-start; padding: .6rem .75rem; border-radius: 8px; background: var(--lx-warning-soft); color: var(--lx-warning); font-weight: 600; font-size: .85rem; }
+
+    .vd-table { width: 100%; font-size: .875rem; border-collapse: collapse; }
+    .vd-table th { font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--lx-muted); padding: .55rem 1.1rem; background: var(--lx-surface-2); border-bottom: 1px solid var(--lx-border); white-space: nowrap; }
+    .vd-table td { padding: .65rem 1.1rem; border-bottom: 1px solid var(--lx-border); color: var(--lx-text-2); vertical-align: middle; }
+    .vd-table tbody tr:last-child td { border-bottom: 0; }
+    .vd-table tfoot td { background: var(--lx-surface-2); font-weight: 600; color: var(--lx-text); border-top: 1px solid var(--lx-border); border-bottom: 0; }
+    .vd .vd-table td, .vd .vd-prod { white-space: normal !important; }
+    .vd .vd-table .num { white-space: nowrap !important; }
+    .vd-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .vd-prod { font-weight: 500; color: var(--lx-text); }
+    .vd-prod small { display: block; color: var(--lx-muted); font-weight: 400; font-size: .74rem; }
+    .vd-f { display: inline-block; margin-left: .3rem; padding: 0 .35rem; border-radius: 4px; font-size: .65rem; font-weight: 700; background: var(--lx-info-soft); color: var(--lx-info); vertical-align: 1px; }
+
+    .vd-pay-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 767.98px) { .vd-pay-grid { grid-template-columns: 1fr; } }
+    .vd-comp { margin-top: .9rem; border: 1px dashed var(--lx-border-strong); border-radius: 10px; padding: .75rem .85rem; display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+    .vd-comp-txt { font-size: .85rem; }
+    .vd-comp-txt b { font-variant-numeric: tabular-nums; }
+    .vd-comp-txt .falta { color: var(--lx-warning); font-weight: 600; }
+    .vd-comp-txt .ok { color: var(--lx-success); font-weight: 600; }
+    .vd-bar { height: 6px; border-radius: 3px; background: var(--lx-surface-3); overflow: hidden; margin-top: .4rem; width: 220px; max-width: 100%; }
+    .vd-bar span { display: block; height: 100%; background: var(--lx-success); }
+
+    .vd-sum { margin: 0; font-size: .9rem; }
+    .vd-sum div { display: flex; justify-content: space-between; gap: 1rem; padding: .35rem 0; }
+    .vd-sum dt { font-weight: 400; color: var(--lx-text-2); }
+    .vd-sum dd { margin: 0; font-variant-numeric: tabular-nums; }
+    .vd-sum .neg { color: var(--lx-danger); }
+    .vd-sum .sep { border-top: 1px solid var(--lx-border); margin-top: .35rem; padding-top: .7rem; }
+    .vd-sum .total dt { font-weight: 600; color: var(--lx-text); font-size: 1rem; }
+    .vd-sum .total dd { font-weight: 700; font-size: 1.45rem; color: var(--lx-text); }
+
+    .vd-contas div { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .45rem 0; }
+    .vd-contas .nome { font-size: .85rem; color: var(--lx-text-2); display: flex; align-items: center; gap: .4rem; }
+    .vd-contas .val { font-weight: 700; font-size: 1.05rem; font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: .5rem; }
+    .vd-tag-f, .vd-tag-2 { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 18px; border-radius: 4px; font-size: .65rem; font-weight: 700; color: #fff; }
+    .vd-tag-f { background: var(--lx-info); }
+    .vd-tag-2 { background: var(--lx-muted); }
+    html.dark-theme .vd-tag-f, html.dark-theme .vd-tag-2 { color: #0b0b0c; }
+    .vd-details summary { cursor: pointer; font-size: .8rem; font-weight: 600; color: var(--lx-gold-strong); margin-top: .5rem; }
+    .vd-details table { width: 100%; font-size: .78rem; margin-top: .5rem; }
+    .vd-details td, .vd-details th { padding: .25rem 0; border-top: 1px solid var(--lx-border); }
+    .vd-details th { color: var(--lx-muted); font-weight: 500; border-top: 0; }
+    .vd-nf-box { border-radius: 8px; padding: .55rem .75rem; font-size: .85rem; font-weight: 500; }
+    .vd-nf-box.t-success { background: var(--lx-success-soft); color: var(--lx-success); }
+    .vd-nf-box.t-warning { background: var(--lx-warning-soft); color: var(--lx-warning); }
+    .vd-nf-box.t-danger { background: var(--lx-danger-soft); color: var(--lx-danger); }
+    .vd-nf-box small { display: block; opacity: .8; font-weight: 400; margin-top: .1rem; }
+    .vd-label { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--lx-muted); margin-bottom: .4rem; }
+
+    .vd-tl { list-style: none; margin: 0; padding: .4rem 1.1rem 1rem; }
+    .vd-tl li { position: relative; padding: .6rem 0 .6rem 1.6rem; }
+    .vd-tl li::before { content: ''; position: absolute; left: 5px; top: 0; bottom: 0; width: 2px; background: var(--lx-border); }
+    .vd-tl li:first-child::before { top: 1rem; }
+    .vd-tl li:last-child::before { bottom: calc(100% - 1rem); }
+    .vd-tl .dot { position: absolute; left: 0; top: .95rem; width: 12px; height: 12px; border-radius: 50%; background: var(--lx-gold); box-shadow: 0 0 0 3px var(--lx-surface); }
+    .vd-tl .dot.t-success { background: var(--lx-success); }
+    .vd-tl .dot.t-warning { background: var(--lx-warning); }
+    .vd-tl .dot.t-info { background: var(--lx-info); }
+    .vd-tl-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .6rem; }
+    .vd-tl-h b { font-size: .88rem; }
+    .vd-tl-h span { font-size: .76rem; color: var(--lx-muted); }
+    .vd-tl-d { font-size: .82rem; color: var(--lx-text-2); white-space: pre-line; margin-top: .15rem; overflow-wrap: anywhere; }
+    .vd-tl-more { display: none; }
+    .vd-tl.aberto .vd-tl-more { display: list-item; }
+    .vd-total-mob { display: none; margin-top: .6rem; font-size: .9rem; color: var(--lx-muted); }
+    .vd-total-mob b { color: var(--lx-text); font-size: 1.2rem; margin-left: .35rem; }
+    .vd-prod .vd-unit-mob { display: none; }
+    @media (max-width: 1199.98px) { .vd-total-mob { display: block; } }
+    @media (max-width: 575.98px) {
+        .vd-table th, .vd-table td { padding: .55rem .7rem; }
+        .vd-table .c-unit { display: none; }
+        .vd-prod .vd-unit-mob { display: block; }
+    }
+    .vd-vazio { text-align: center; color: var(--lx-muted); font-size: .85rem; padding: 1.5rem 1rem; }
+</style>
+
+<div class="page-content vd">
+    <div class="vd-crumb"><a href="{{ route('vendas.index') }}"><i class="bi bi-arrow-left"></i> Vendas</a></div>
+
+    {{-- Cabeçalho --}}
+    <div class="vd-head">
+        <div>
+            <div class="vd-title">
+                <h1>Venda #{{ $item->id }}</h1>
+                @if($item->fechada_caixa)
+                    <span class="vd-pill t-muted"><i class="bi bi-lock-fill"></i> Fechada no caixa</span>
+                    @if(!empty($usuarioAdm))
+                        <button type="button" id="lux-venda-reabrir-caixa" data-venda="{{ $item->id }}" class="vd-pill t-warning" title="Permitir edição e alterações novamente">
+                            <i class="bi bi-unlock"></i> Reabrir caixa
+                        </button>
                     @endif
-                </div>
-                <div class="flex flex-wrap gap-2">
-                    <span class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium {{ $twPedido[$stPed] ?? 'bg-gray-500/15 text-gray-300 border-gray-600' }}">
-                        <i data-lucide="package" class="size-3.5 shrink-0"></i>
-                        {{ $lblStatusPedido[$stPed] ?? $stPed }}
-                    </span>
-                    <span class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium {{ $twPagamento[$stPag] ?? 'bg-gray-500/15 text-gray-300 border-gray-600' }}">
-                        <i data-lucide="wallet" class="size-3.5 shrink-0"></i>
-                        {{ $lblStatusPagamento[$stPag] ?? $stPag }}
-                    </span>
-                    <span class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium {{ $twNfe[$estNfe] ?? $twNfe['novo'] }}">
-                        <i data-lucide="file-text" class="size-3.5 shrink-0"></i>
-                        NF-e: {{ ucfirst($estNfe) }}
-                    </span>
-                </div>
+                @endif
             </div>
-
-            {{-- Cliente em duas colunas --}}
-            <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div class="rounded-xl border border-gray-700 bg-gray-800/50 p-4 shadow-md">
-                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Cliente</p>
-                    <p class="text-lg font-semibold text-gray-100">{{ $item->cliente->razao_social }}</p>
-                    <p class="mt-1 text-sm text-gray-400 font-mono">{{ $item->cliente->cpf_cnpj }}</p>
-                </div>
-                <div class="rounded-xl border border-gray-700 bg-gray-800/50 p-4 shadow-md">
-                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Resumo rápido</p>
-                    <dl class="space-y-2 text-sm">
-                        <div class="flex justify-between gap-4">
-                            <dt class="text-gray-400">Valor total</dt>
-                            <dd class="font-semibold text-green-400 tabular-nums">{{ __moeda($item->valor_total) }}</dd>
-                        </div>
-                        <div class="flex justify-between gap-4">
-                            <dt class="text-gray-400">Registro</dt>
-                            <dd class="text-gray-200">{{ $item->data_registro }}</dd>
-                        </div>
-                    </dl>
-                </div>
+            <div class="vd-sub">
+                <span><i class="bi bi-calendar3"></i>{{ $dataBr($item->data_registro ?: $item->created_at, true) }}</span>
+                @if($item->usuario)<span><i class="bi bi-person"></i>{{ $item->usuario->nome }}</span>@endif
+                @if($item->pedido_nuvemshop_id && $item->pedidoNuvemShop)
+                    <span><i class="bi bi-bag"></i><a href="{{ route('nuvemshop-pedidos.show', [$item->pedidoNuvemShop->pedido_id]) }}">Pedido Nuvemshop</a></span>
+                @endif
             </div>
-        </header>
+            <div class="vd-pills">
+                <span class="vd-pill t-{{ $tomPedido[$stPed] ?? 'muted' }}"><i class="bi bi-{{ $icoPedido[$stPed] ?? 'circle' }}"></i>{{ $lblStatusPedido[$stPed] ?? $stPed }}</span>
+                <span class="vd-pill t-{{ $tomPagamento[$stPag] ?? 'muted' }}"><i class="bi bi-wallet2"></i>{{ $lblStatusPagamento[$stPag] ?? $stPag }}</span>
+                <span class="vd-pill t-{{ $tomNfe[$estNfe] ?? 'muted' }}"><i class="bi bi-file-earmark-text"></i>NF-e: {{ ucfirst($estNfe) }}</span>
+            </div>
+            <div class="vd-total-mob">Total da venda <b>R$ {{ __moeda($totalVenda) }}</b></div>
+        </div>
+        <div class="vd-acts">
+            @if(!$item->fechada_caixa)
+            <a href="{{ route('vendas.edit', $item->id) }}" class="btn btn-primary"><i class="bi bi-pencil"></i> Editar</a>
+            @endif
+            <button type="button" data-lux-comprovantes="{{ $item->id }}" class="btn btn-outline-secondary">
+                <i class="bi bi-paperclip"></i> Comprovantes
+                <span data-lux-comp-count="{{ $item->id }}" class="vd-badge {{ $comprovantes->count() ? '' : 'd-none' }}">{{ $comprovantes->count() ?: '' }}</span>
+            </button>
+            <a href="{{ route('vendas.print', ['id' => $item->id, 'download' => 1]) }}" class="btn btn-outline-secondary"><i class="bi bi-download"></i> PDF</a>
+            <a href="{{ $podeFichaShow ? route('vendas.print-ficha', $item->id) : '#' }}" target="{{ $podeFichaShow ? '_blank' : '_self' }}" rel="noopener"
+               class="btn btn-outline-secondary {{ $podeFichaShow ? '' : 'disabled' }}" title="{{ $podeFichaShow ? 'Imprimir ficha de separação' : 'Confirme o pedido para imprimir a ficha' }}"
+               @if(!$podeFichaShow) aria-disabled="true" tabindex="-1" @endif>
+                <i class="bi bi-printer"></i> Ficha
+            </a>
+        </div>
+    </div>
 
-        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
+    <div class="vd-grid">
+        <div class="vd-main">
 
-            <div class="xl:col-span-2 space-y-6">
-
-                {{-- 2. Informações da venda (grid) --}}
-                <section class="rounded-xl border border-gray-700 bg-gray-800 shadow-md overflow-hidden">
-                    <div class="px-4 sm:px-5 py-4 border-b border-gray-700 flex items-center gap-2">
-                        <i data-lucide="clipboard-list" class="size-5 text-indigo-400"></i>
-                        <h2 class="text-base font-semibold text-gray-100">Informações da venda</h2>
-                    </div>
-                    <div class="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
-                        <div>
-                            <p class="text-gray-500 text-xs uppercase tracking-wide mb-1">Cliente</p>
-                            <p class="text-gray-100">{{ $item->cliente->razao_social }}</p>
-                        </div>
-                        <div>
-                            <p class="text-gray-500 text-xs uppercase tracking-wide mb-1">CPF / CNPJ</p>
-                            <p class="text-gray-100 font-mono">{{ $item->cliente->cpf_cnpj }}</p>
-                        </div>
-                        <div>
-                            <p class="text-gray-500 text-xs uppercase tracking-wide mb-1">Data</p>
-                            <p class="text-gray-100">{{ $item->data_registro }}</p>
-                        </div>
-                        <div>
-                            <p class="text-gray-500 text-xs uppercase tracking-wide mb-1">Cidade</p>
-                            <p class="text-gray-100">{{ optional($item->cliente->cidade)->nome ?? '—' }}</p>
-                        </div>
-                        <div>
-                            <p class="text-gray-500 text-xs uppercase tracking-wide mb-1">Valor total</p>
-                            <p class="text-green-400 font-semibold tabular-nums">{{ __moeda($item->valor_total) }}</p>
-                        </div>
-                        <div>
-                            <p class="text-gray-500 text-xs uppercase tracking-wide mb-1">Estado (UF)</p>
-                            <p class="text-gray-100">{{ optional($item->cliente->cidade)->uf ?? '—' }}</p>
-                        </div>
-                        <div class="sm:col-span-2">
-                            <p class="text-gray-500 text-xs uppercase tracking-wide mb-1">Chave da NF-e</p>
-                            <p class="text-gray-300 font-mono text-xs break-all leading-relaxed">{{ $item->chave ? $item->chave : '—' }}</p>
-                        </div>
-                        <div>
-                            <p class="text-gray-500 text-xs uppercase tracking-wide mb-1">Data de entrega</p>
-                            <p class="text-gray-100">{{ $item->data_entrega ?? '—' }}</p>
-                        </div>
-                        @if(!empty($item->aviso_entrega))
-                        <div class="sm:col-span-2">
-                            <p class="text-gray-500 text-xs uppercase tracking-wide mb-1">Aviso de entrega</p>
-                            <p class="text-amber-300 font-semibold">⚠ {{ $item->aviso_entrega }}</p>
-                        </div>
+            {{-- Cliente + Entrega --}}
+            <div class="vd-two">
+                <section class="vd-card">
+                    <div class="vd-card-h"><h2><i class="bi bi-person-vcard"></i> Cliente</h2></div>
+                    <div class="vd-card-b">
+                        @if($cli)
+                            <p class="vd-cli-nome">{{ $cli->razao_social }}</p>
+                            <div class="vd-cli-doc">
+                                {{ $cli->cpf_cnpj ?: 'Sem CPF/CNPJ' }}
+                                @if($cli->cidade) · {{ $cli->cidade->nome }}/{{ $cli->cidade->uf }} @endif
+                            </div>
+                            @if($endereco)<div class="vd-cli-doc mt-1">{{ $endereco }}</div>@endif
+                            <div class="vd-cli-links">
+                                @if($foneWa && strlen($foneWa) >= 12)
+                                <a href="https://wa.me/{{ $foneWa }}" target="_blank" rel="noopener"><i class="bi bi-whatsapp"></i> {{ $fone }}</a>
+                                @elseif($fone)
+                                <a href="tel:{{ preg_replace('/\D/', '', $fone) }}"><i class="bi bi-telephone"></i> {{ $fone }}</a>
+                                @endif
+                                @if($cli->email)<a href="mailto:{{ $cli->email }}"><i class="bi bi-envelope"></i> {{ $cli->email }}</a>@endif
+                                <a href="{{ route('clientes.edit', $cli->id) }}"><i class="bi bi-box-arrow-up-right"></i> Cadastro</a>
+                            </div>
+                        @else
+                            <p class="text-muted mb-0">Cliente não encontrado.</p>
                         @endif
                     </div>
                 </section>
 
-                {{-- 3. Itens --}}
-                <section class="rounded-xl border border-gray-700 bg-gray-800 shadow-md overflow-hidden">
-                    <div class="px-4 sm:px-5 py-4 border-b border-gray-700 flex items-center gap-2">
-                        <i data-lucide="shopping-cart" class="size-5 text-indigo-400"></i>
-                        <h2 class="text-base font-semibold text-gray-100">Itens da venda</h2>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm text-left">
-                            <thead>
-                                <tr class="border-b border-gray-700 bg-gray-900/40 text-gray-400 text-xs uppercase tracking-wide">
-                                    <th class="px-4 py-3 font-medium">ID</th>
-                                    <th class="px-4 py-3 font-medium">Produto</th>
-                                    <th class="px-4 py-3 font-medium text-right">Qtd</th>
-                                    <th class="px-4 py-3 font-medium text-right">Valor unit.</th>
-                                    <th class="px-4 py-3 font-medium text-right">Subtotal</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-700/80">
-                                @foreach ($item->itens as $p)
-                                <tr class="transition-colors hover:bg-gray-700/30">
-                                    <td class="px-4 py-3.5 text-gray-400 font-mono">{{ $p->id }}</td>
-                                    <td class="px-4 py-3.5 text-gray-100">{{ $p->produto->nome }}@if((float) $p->qtd_fiscal > 0) <span class="ml-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-bold bg-indigo-600 text-white" title="Unidades com nota (conta fiscal)">F {{ (float) $p->qtd_fiscal < (float) $p->quantidade ? rtrim(rtrim(number_format((float) $p->qtd_fiscal, 3, ',', ''), '0'), ',') . ' un' : '' }}</span>@endif</td>
-                                    <td class="px-4 py-3.5 text-right tabular-nums text-gray-200">{{ __moeda($p->quantidade) }}</td>
-                                    <td class="px-4 py-3.5 text-right tabular-nums text-gray-300">{{ __moeda($p->valor) }}</td>
-                                    <td class="px-4 py-3.5 text-right tabular-nums font-medium text-indigo-300">{{ __moeda($p->quantidade * $p->valor) }}</td>
-                                </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
+                <section class="vd-card">
+                    <div class="vd-card-h"><h2><i class="bi bi-truck"></i> Entrega e nota</h2></div>
+                    <div class="vd-card-b">
+                        <dl class="vd-dl">
+                            <div><dt>Data de entrega</dt><dd>{{ $dataBr($item->data_entrega) ?? '—' }}</dd></div>
+                            <div><dt>NF-e</dt><dd>{{ ucfirst($estNfe) }}{{ $item->numero_nfe ? ' · nº ' . $item->numero_nfe : '' }}</dd></div>
+                            @if(!empty($item->chave))
+                            <div class="full"><dt>Chave da NF-e</dt><dd class="vd-mono">{{ $item->chave }}</dd></div>
+                            @endif
+                            @if(!empty($item->observacao))
+                            <div class="full"><dt>Observação</dt><dd>{{ $item->observacao }}</dd></div>
+                            @endif
+                        </dl>
+                        @if(!empty($item->aviso_entrega))
+                        <div class="vd-aviso mt-3"><i class="bi bi-exclamation-triangle-fill"></i><span>{{ $item->aviso_entrega }}</span></div>
+                        @endif
                     </div>
                 </section>
+            </div>
 
-                {{-- 5. Pagamento + Fatura --}}
-                <section class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="rounded-xl border border-gray-700 bg-gray-800 shadow-md p-4 sm:p-5">
-                        <div class="flex items-center gap-2 mb-4">
-                            <i data-lucide="credit-card" class="size-5 text-indigo-400"></i>
-                            <h2 class="text-base font-semibold text-gray-100">Pagamento</h2>
-                        </div>
-                        <dl class="space-y-3 text-sm">
-                            <div>
-                                <dt class="text-gray-500 text-xs uppercase tracking-wide">Forma</dt>
-                                <dd class="mt-0.5 text-gray-100">{{ $item->forma_pagamento }}</dd>
-                            </div>
-                            <div>
-                                <dt class="text-gray-500 text-xs uppercase tracking-wide">Tipo</dt>
-                                <dd class="mt-0.5 text-gray-100">{{ \App\Models\Venda::getTipo($item->tipo_pagamento) }}</dd>
-                            </div>
+            {{-- Itens --}}
+            <section class="vd-card">
+                <div class="vd-card-h">
+                    <h2><i class="bi bi-bag"></i> Itens</h2>
+                    <span class="vd-h-extra">{{ $item->itens->count() }} {{ $item->itens->count() === 1 ? 'produto' : 'produtos' }} · {{ $qtdFmt($qtdUnidades) }} un.</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="vd-table">
+                        <thead>
+                            <tr>
+                                <th>Produto</th>
+                                <th class="num">Qtd</th>
+                                <th class="num c-unit">Unitário</th>
+                                <th class="num">Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($item->itens as $p)
+                            <tr>
+                                <td>
+                                    <div class="vd-prod">
+                                        {{ optional($p->produto)->nome ?? ('Produto #' . $p->produto_id) }}
+                                        @if((float) $p->qtd_fiscal > 0)
+                                            <span class="vd-f" title="Unidades com nota (conta fiscal)">F{{ (float) $p->qtd_fiscal < (float) $p->quantidade ? ' ' . $qtdFmt($p->qtd_fiscal) : '' }}</span>
+                                        @endif
+                                        <small>#{{ $p->produto_id }}</small>
+                                        <small class="vd-unit-mob">{{ $qtdFmt($p->quantidade) }} × {{ __moeda($p->valor) }}</small>
+                                    </div>
+                                </td>
+                                <td class="num">{{ $qtdFmt($p->quantidade) }}</td>
+                                <td class="num c-unit">{{ __moeda($p->valor) }}</td>
+                                <td class="num"><b>{{ __moeda((float) $p->quantidade * (float) $p->valor) }}</b></td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td>Soma dos itens</td>
+                                <td class="num">{{ $qtdFmt($qtdUnidades) }}</td>
+                                <td class="c-unit"></td>
+                                <td class="num">{{ __moeda($somaItens) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </section>
+
+            {{-- Pagamento --}}
+            <section class="vd-card">
+                <div class="vd-card-h"><h2><i class="bi bi-credit-card"></i> Pagamento</h2></div>
+                <div class="vd-card-b">
+                    <div class="vd-pay-grid">
+                        <dl class="vd-dl">
+                            <div><dt>Forma</dt><dd>{{ ['a_vista' => 'À vista', '30_dias' => '30 dias', 'personalizado' => 'Personalizado'][$item->forma_pagamento] ?? ($item->forma_pagamento ?: '—') }}</dd></div>
+                            <div><dt>Tipo</dt><dd>{{ \App\Models\Venda::getTipo($item->tipo_pagamento) ?: '—' }}</dd></div>
                         </dl>
-                    </div>
-                    <div class="rounded-xl border border-gray-700 bg-gray-800 shadow-md p-4 sm:p-5">
-                        <div class="flex items-center gap-2 mb-4">
-                            <i data-lucide="receipt" class="size-5 text-indigo-400"></i>
-                            <h2 class="text-base font-semibold text-gray-100">Fatura / parcelas</h2>
-                        </div>
-                        <div class="overflow-x-auto rounded-lg border border-gray-700">
-                            <table class="w-full text-sm">
-                                <thead>
-                                    <tr class="bg-gray-900/50 text-gray-400 text-xs uppercase border-b border-gray-700">
-                                        <th class="px-3 py-2 text-left font-medium">Vencimento</th>
-                                        <th class="px-3 py-2 text-right font-medium">Valor</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-700/80">
+                        <div>
+                            <div class="vd-label">Parcelas</div>
+                            <table class="vd-table" style="border:1px solid var(--lx-border);border-radius:8px;overflow:hidden">
+                                <tbody>
                                     @if(count($item->duplicatas) > 0)
-                                        @foreach ($item->duplicatas as $dup)
-                                        <tr class="hover:bg-gray-700/25 transition-colors">
-                                            <td class="px-3 py-2.5 text-gray-200">
-                                                {{ $dup->data_vencimento ? \Carbon\Carbon::parse($dup->data_vencimento)->format('d/m/Y') : '—' }}
-                                            </td>
-                                            <td class="px-3 py-2.5 text-right tabular-nums font-medium text-gray-100">{{ __moeda($dup->valor_integral) }}</td>
+                                        @foreach ($item->duplicatas as $i => $dup)
+                                        <tr>
+                                            <td style="padding:.45rem .75rem">{{ $i + 1 }}ª · {{ $dataBr($dup->data_vencimento) ?? '—' }}</td>
+                                            <td class="num" style="padding:.45rem .75rem"><b>{{ __moeda($dup->valor_integral) }}</b></td>
                                         </tr>
                                         @endforeach
                                     @else
-                                        <tr class="hover:bg-gray-700/25 transition-colors">
-                                            <td class="px-3 py-2.5 text-gray-200">{{ __data_pt($item->created_at, 0) }}</td>
-                                            <td class="px-3 py-2.5 text-right tabular-nums font-medium text-gray-100">{{ __moeda($item->valor_total) }}</td>
+                                        <tr>
+                                            <td style="padding:.45rem .75rem">Única · {{ $dataBr($item->created_at) }}</td>
+                                            <td class="num" style="padding:.45rem .75rem"><b>{{ __moeda($totalVenda) }}</b></td>
                                         </tr>
                                     @endif
                                 </tbody>
                             </table>
                         </div>
                     </div>
-                </section>
 
-                {{-- Carnê (lógica preservada) --}}
-                @if(count($item->duplicatas) > 0)
-                <section class="rounded-xl border border-gray-700 bg-gray-800/50 shadow-md p-4 sm:p-5">
-                    <h2 class="text-sm font-semibold text-gray-200 mb-3 flex items-center gap-2">
-                        <i data-lucide="file-stack" class="size-4 text-indigo-400"></i> Gerar carnê
-                    </h2>
-                    {!! Form::open()->get()->route('vendas.carne') !!}
-                    <input type="hidden" value="{{ $item->id }}" name="id">
-                    <div class="flex flex-col sm:flex-row flex-wrap gap-3 items-end">
-                        <div class="w-full sm:w-40">
-                            {!! Form::text('juros', 'Juros')->attrs(['class' => 'moeda form-control']) !!}
+                    <div class="vd-comp">
+                        <div class="vd-comp-txt">
+                            @if($comprovantes->count())
+                                Comprovado <b>R$ {{ __moeda($comprovado) }}</b> de <b>R$ {{ __moeda($totalVenda) }}</b> ·
+                                @if($faltaComprovar > 0.009)
+                                    <span class="falta">falta R$ {{ __moeda($faltaComprovar) }}</span>
+                                @else
+                                    <span class="ok">completo</span>
+                                @endif
+                                <div class="vd-bar"><span style="width: {{ $totalVenda > 0 ? min(100, round($comprovado / $totalVenda * 100)) : 0 }}%"></span></div>
+                            @else
+                                <span class="text-muted">Nenhum comprovante anexado.</span>
+                            @endif
                         </div>
-                        <div class="w-full sm:w-40">
-                            {!! Form::text('multa', 'Multa')->attrs(['class' => 'moeda form-control']) !!}
-                        </div>
-                        <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-md transition hover:bg-indigo-500 hover:shadow-lg">
-                            <i data-lucide="plus" class="size-4"></i> Gerar carnê
+                        <button type="button" data-lux-comprovantes="{{ $item->id }}" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-paperclip"></i> {{ $comprovantes->count() ? 'Ver / anexar' : 'Anexar comprovante' }}
                         </button>
                     </div>
-                    {!! Form::close() !!}
-                </section>
+                </div>
+            </section>
+
+            {{-- Histórico --}}
+            @php $hist = ($auditorias ?? collect())->values(); @endphp
+            <section class="vd-card">
+                <div class="vd-card-h">
+                    <h2><i class="bi bi-clock-history"></i> Histórico</h2>
+                    <span class="vd-h-extra">quem fez o quê</span>
+                </div>
+                @if($hist->count())
+                <ol class="vd-tl" id="vd-tl">
+                    @foreach($hist as $n => $a)
+                    @php $acaoAud = (string) ($a->acao ?? ''); @endphp
+                    <li class="{{ $n >= 8 ? 'vd-tl-more' : '' }}">
+                        <span class="dot t-{{ $tomAuditoria($acaoAud) }}"></span>
+                        <div class="vd-tl-h">
+                            <b>{{ $rotuloAcaoAuditoria[$acaoAud] ?? $acaoAud }}</b>
+                            <span>{{ \Carbon\Carbon::parse($a->created_at)->format('d/m/Y H:i') }} · {{ $a->usuario ? $a->usuario->nome : 'sistema' }}</span>
+                        </div>
+                        @if($a->descricao)<div class="vd-tl-d">{{ $a->descricao }}</div>@endif
+                    </li>
+                    @endforeach
+                </ol>
+                @if($hist->count() > 8)
+                <div class="px-3 pb-3"><button type="button" class="btn btn-sm btn-outline-secondary w-100" onclick="document.getElementById('vd-tl').classList.add('aberto'); this.remove();">Ver mais {{ $hist->count() - 8 }}</button></div>
                 @endif
+                @else
+                <div class="vd-vazio">Nenhuma atividade registrada ainda.</div>
+                @endif
+            </section>
+        </div>
 
-                {{-- 7. Histórico --}}
-                <section class="rounded-xl border border-gray-700 bg-gray-800 shadow-md overflow-hidden">
-                    <div class="px-4 sm:px-5 py-4 border-b border-gray-700">
-                        <div class="flex items-center gap-2">
-                            <i data-lucide="history" class="size-5 text-indigo-400"></i>
-                            <h2 class="text-base font-semibold text-gray-100">Histórico da venda</h2>
-                        </div>
-                        <p class="mt-1 text-xs text-gray-500">Atividades desta venda (quem fez o quê), em linguagem simples.</p>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm text-left">
-                            <thead>
-                                <tr class="border-b border-gray-700 bg-gray-900/40 text-gray-400 text-xs uppercase tracking-wide">
-                                    <th class="px-4 py-3 font-medium whitespace-nowrap">Quando</th>
-                                    <th class="px-4 py-3 font-medium">Atividade</th>
-                                    <th class="px-4 py-3 font-medium min-w-[12rem]">O que aconteceu</th>
-                                    <th class="px-4 py-3 font-medium">Usuário</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-700/80">
-                                @forelse(($auditorias ?? collect()) as $a)
-                                @php
-                                    $acaoAud = (string) ($a->acao ?? '');
-                                    $slug = $rotuloAcaoAuditoria[$acaoAud] ?? $acaoAud;
-                                    $badgeHist = match (true) {
-                                        str_contains($acaoAud, 'workflow') => 'bg-violet-500/15 text-violet-300 border-violet-500/30',
-                                        str_contains($acaoAud, 'caixa') => 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-                                        $acaoAud === 'venda_criada' => 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-                                        $acaoAud === 'venda_alterada' => 'bg-sky-500/15 text-sky-300 border-sky-500/30',
-                                        default => 'bg-gray-500/15 text-gray-300 border-gray-600',
-                                    };
-                                @endphp
-                                <tr class="hover:bg-gray-700/30 transition-colors align-top">
-                                    <td class="px-4 py-3 text-gray-400 whitespace-nowrap text-xs">{{ \Carbon\Carbon::parse($a->created_at)->format('d/m/Y H:i') }}</td>
-                                    <td class="px-4 py-3">
-                                        <span class="inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium {{ $badgeHist }}">{{ $slug }}</span>
-                                    </td>
-                                    <td class="px-4 py-3 text-gray-300 text-xs max-w-xl whitespace-pre-line break-words">{{ $a->descricao }}</td>
-                                    <td class="px-4 py-3 text-gray-200">{{ $a->usuario ? $a->usuario->nome : '—' }}</td>
-                                </tr>
-                                @empty
-                                <tr>
-                                    <td colspan="4" class="px-4 py-8 text-center text-gray-500 text-sm">Nenhum registro de auditoria ainda. Novas ações passam a ser gravadas automaticamente.</td>
-                                </tr>
-                                @endforelse
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-            </div>
-
-            {{-- Coluna lateral: resumo + ações --}}
-            <div class="xl:col-span-1 space-y-6">
-                {{-- 4. Resumo financeiro (fixo ao rolar: sticky + self-start no grid) --}}
-                <aside class="rounded-xl border border-gray-700 bg-gray-800 shadow-md p-5 xl:sticky xl:top-24 xl:z-30 xl:self-start xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto xl:overscroll-contain">
-                    <div class="flex items-center gap-2 mb-4">
-                        <i data-lucide="calculator" class="size-5 text-indigo-400"></i>
-                        <h2 class="text-base font-semibold text-gray-100">Resumo financeiro</h2>
-                    </div>
-                    <dl class="space-y-3 text-sm">
-                        <div class="flex justify-between gap-3 border-b border-gray-700/80 pb-3">
-                            <dt class="text-gray-400">Soma dos itens</dt>
-                            <dd class="tabular-nums text-gray-200 font-medium">{{ __moeda($somaItensCalc) }}</dd>
-                        </div>
-                        <div class="flex justify-between gap-3">
-                            <dt class="text-gray-400">Desconto</dt>
-                            <dd class="tabular-nums text-rose-300/90">− {{ __moeda($item->desconto) }}</dd>
-                        </div>
-                        <div class="flex justify-between gap-3">
-                            <dt class="text-gray-400">Acréscimo</dt>
-                            <dd class="tabular-nums text-gray-200">+ {{ __moeda($item->acrescimo) }}</dd>
-                        </div>
-                        <div class="flex justify-between gap-3 border-b border-gray-700/80 pb-3">
-                            <dt class="text-gray-400">Frete</dt>
-                            <dd class="tabular-nums text-gray-200">+ {{ __moeda($item->frete) }}</dd>
-                        </div>
-                        <div class="flex justify-between gap-3 items-baseline pt-1">
-                            <dt class="text-base font-semibold text-gray-100">Total</dt>
-                            <dd class="text-xl font-bold tabular-nums text-green-400">{{ __moeda($totalComFrete) }}</dd>
-                        </div>
+        {{-- Lateral --}}
+        <aside class="vd-side">
+            <section class="vd-card">
+                <div class="vd-card-h"><h2><i class="bi bi-calculator"></i> Resumo</h2></div>
+                <div class="vd-card-b">
+                    <dl class="vd-sum">
+                        <div><dt>Itens</dt><dd>{{ __moeda($item->valor_total) }}</dd></div>
+                        @if($vDesc > 0)<div><dt>Desconto</dt><dd class="neg">− {{ __moeda($vDesc) }}</dd></div>@endif
+                        @if($vAcr > 0)<div><dt>Acréscimo</dt><dd>+ {{ __moeda($vAcr) }}</dd></div>@endif
+                        <div><dt>Frete</dt><dd>{{ $vFrete > 0 ? '+ ' . __moeda($vFrete) : 'grátis / sem frete' }}</dd></div>
+                        <div class="sep total"><dt>Total</dt><dd>R$ {{ __moeda($totalVenda) }}</dd></div>
                     </dl>
-                    <p class="mt-4 text-xs text-gray-500 leading-relaxed">O total exibido segue a regra anterior: valor total da venda + frete.</p>
-                </aside>
+                </div>
+            </section>
 
-                @php
-                    $divFiscal = $item->divisaoFiscal();
-                    $sitNf = $item->situacaoNfExterna($divFiscal);
-                @endphp
-                @if($divFiscal['tem_fiscal'] || $sitNf)
-                {{-- Divisão em duas contas (interno: vendedor e fechamento) --}}
-                <div id="nf-externa" class="rounded-xl border border-indigo-500/40 bg-gray-800 shadow-md p-5">
-                    <div class="flex items-center gap-2 mb-4">
-                        <i data-lucide="split" class="size-5 text-indigo-400"></i>
-                        <h2 class="text-base font-semibold text-gray-100">Cobrar em duas contas</h2>
+            @if($divFiscal['tem_fiscal'] || $sitNf)
+            <section class="vd-card" id="nf-externa">
+                <div class="vd-card-h"><h2><i class="bi bi-signpost-split"></i> Cobrar em duas contas</h2></div>
+                <div class="vd-card-b">
+                    <div class="vd-contas">
+                        <div>
+                            <span class="nome"><span class="vd-tag-f">F</span>{{ config('lux.conta_fiscal') }}</span>
+                            <span class="val">@include('vendas.partials.pix_btn', ['pago' => ($stPag === 'pago'), 'conta' => 'fiscal', 'valor' => $divFiscal['fiscal'], 'txid' => 'LUX' . $item->id . 'F']){{ __moeda($divFiscal['fiscal']) }}</span>
+                        </div>
+                        <div>
+                            <span class="nome"><span class="vd-tag-2">2</span>{{ config('lux.conta_nao_fiscal') }}</span>
+                            <span class="val">@include('vendas.partials.pix_btn', ['pago' => ($stPag === 'pago'), 'conta' => 'nao_fiscal', 'valor' => $divFiscal['nao_fiscal'], 'txid' => 'LUX' . $item->id . 'N']){{ __moeda($divFiscal['nao_fiscal']) }}</span>
+                        </div>
                     </div>
-                    <dl class="space-y-3 text-sm">
-                        <div class="flex justify-between gap-3 items-baseline">
-                            <dt class="text-gray-300"><span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-bold bg-indigo-600 text-white mr-1">F</span>{{ config('lux.conta_fiscal') }}</dt>
-                            <dd class="text-lg font-bold tabular-nums text-indigo-300 flex items-center gap-2">@include('vendas.partials.pix_btn', ['pago' => (($item->status_pagamento ?? '') === 'pago'), 'conta' => 'fiscal', 'valor' => $divFiscal['fiscal'], 'txid' => 'LUX' . $item->id . 'F']){{ __moeda($divFiscal['fiscal']) }}</dd>
-                        </div>
-                        <div class="flex justify-between gap-3 items-baseline border-b border-gray-700/80 pb-3">
-                            <dt class="text-gray-300"><span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-bold bg-gray-500 text-white mr-1">2</span>{{ config('lux.conta_nao_fiscal') }}</dt>
-                            <dd class="text-lg font-bold tabular-nums text-gray-100 flex items-center gap-2">@include('vendas.partials.pix_btn', ['pago' => (($item->status_pagamento ?? '') === 'pago'), 'conta' => 'nao_fiscal', 'valor' => $divFiscal['nao_fiscal'], 'txid' => 'LUX' . $item->id . 'N']){{ __moeda($divFiscal['nao_fiscal']) }}</dd>
-                        </div>
-                        <div class="flex justify-between gap-3 text-xs text-gray-500">
-                            <dt>Total</dt>
-                            <dd class="tabular-nums">{{ __moeda($divFiscal['total']) }}</dd>
-                        </div>
-                    </dl>
 
-                    <details class="mt-4">
-                        <summary class="cursor-pointer text-xs font-medium text-indigo-300">Itens para emitir a NF-e ({{ $item->itensFiscais()->count() }})</summary>
-                        <table class="w-full mt-2 text-xs text-gray-300">
-                            <thead class="text-gray-500">
-                                <tr><th class="text-left py-1">Produto</th><th class="text-right py-1">Qtd</th><th class="text-right py-1">Unit.</th><th class="text-right py-1">Subtotal</th></tr>
-                            </thead>
+                    <details class="vd-details">
+                        <summary>Itens para emitir a NF-e ({{ $item->itensFiscais()->count() }})</summary>
+                        <table>
+                            <thead><tr><th class="text-start">Produto</th><th class="text-end">Qtd</th><th class="text-end">Unit.</th><th class="text-end">Subtotal</th></tr></thead>
                             <tbody>
                                 @foreach($item->itensFiscais() as $fi)
-                                <tr class="border-t border-gray-700/60">
-                                    <td class="py-1 pr-2">{{ $fi->produto->nome ?? ('#' . $fi->produto_id) }}</td>
-                                    <td class="py-1 text-right tabular-nums">{{ rtrim(rtrim(number_format((float) $fi->qtd_fiscal, 3, ',', '.'), '0'), ',') }}</td>
-                                    <td class="py-1 text-right tabular-nums">{{ __moeda($fi->valor) }}</td>
-                                    <td class="py-1 text-right tabular-nums">{{ __moeda(round((float) $fi->valor * (float) $fi->qtd_fiscal, 2)) }}</td>
+                                <tr>
+                                    <td class="pe-2">{{ $fi->produto->nome ?? ('#' . $fi->produto_id) }}</td>
+                                    <td class="text-end">{{ $qtdFmt($fi->qtd_fiscal) }}</td>
+                                    <td class="text-end">{{ __moeda($fi->valor) }}</td>
+                                    <td class="text-end">{{ __moeda(round((float) $fi->valor * (float) $fi->qtd_fiscal, 2)) }}</td>
                                 </tr>
                                 @endforeach
                             </tbody>
                         </table>
-                        @if((float) $item->desconto > 0 || (float) $item->acrescimo > 0)
-                        <p class="mt-2 text-[11px] text-gray-500">Frete, desconto e acréscimo ficam na {{ config('lux.conta_nao_fiscal') }}. Itens fiscais: {{ __moeda($divFiscal['itens_fiscal']) }} → cobrar {{ __moeda($divFiscal['fiscal']) }}.</p>
+                        @if($vDesc > 0 || $vAcr > 0)
+                        <p class="mt-2 mb-0 small text-muted">Frete, desconto e acréscimo ficam na {{ config('lux.conta_nao_fiscal') }}. Itens fiscais: {{ __moeda($divFiscal['itens_fiscal']) }} → cobrar {{ __moeda($divFiscal['fiscal']) }}.</p>
                         @endif
                     </details>
 
-                    {{-- Controle da NF-e emitida no outro sistema --}}
-                    <div class="mt-4 border-t border-gray-700/80 pt-4">
-                        <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">NF-e da parte fiscal</p>
-                        @php
-                            $nfErp = \App\Models\NotaFiscal::where('venda_id', $item->id)->orderByDesc('id')->first();
-                            $nfErpCls = ['rascunho' => 'bg-gray-600', 'rejeitada' => 'bg-rose-600', 'autorizada' => 'bg-emerald-600', 'cancelada' => 'bg-gray-800'];
-                        @endphp
-                        @if($divFiscal['tem_fiscal'])
-                        <div class="mb-3 flex flex-wrap items-center gap-2">
-                            @if($nfErp)
-                            <a href="{{ route('notas-fiscais.conferir', $nfErp->id) }}" class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500">
-                                <i data-lucide="file-text" class="size-4"></i>
-                                {{ $nfErp->numero ? 'NF-e ' . $nfErp->numero : 'Rascunho da NF-e' }}
-                            </a>
-                            <span class="rounded px-2 py-0.5 text-xs font-semibold text-white {{ $nfErpCls[$nfErp->status] ?? 'bg-gray-600' }}">{{ \App\Models\NotaFiscal::STATUS[$nfErp->status] ?? $nfErp->status }}</span>
+                    <hr class="my-3">
+                    <div class="vd-label">NF-e da parte fiscal</div>
+                    @php
+                        $nfErp = \App\Models\NotaFiscal::where('venda_id', $item->id)->orderByDesc('id')->first();
+                        $nfErpTom = ['rascunho' => 'muted', 'rejeitada' => 'danger', 'autorizada' => 'success', 'cancelada' => 'muted'];
+                    @endphp
+                    @if($divFiscal['tem_fiscal'])
+                    <div class="mb-3 d-flex flex-wrap align-items-center gap-2">
+                        @if($nfErp)
+                            <a href="{{ route('notas-fiscais.conferir', $nfErp->id) }}" class="btn btn-sm btn-primary"><i class="bi bi-file-earmark-text"></i> {{ $nfErp->numero ? 'NF-e ' . $nfErp->numero : 'Rascunho da NF-e' }}</a>
+                            <span class="vd-pill t-{{ $nfErpTom[$nfErp->status] ?? 'muted' }}">{{ \App\Models\NotaFiscal::STATUS[$nfErp->status] ?? $nfErp->status }}</span>
                             @if($nfErp->status === 'autorizada')
-                            <a href="{{ route('notas-fiscais.danfe', $nfErp->id) }}" target="_blank" class="text-xs text-indigo-300 underline">DANFE</a>
+                            <a href="{{ route('notas-fiscais.danfe', $nfErp->id) }}" target="_blank" class="small">DANFE</a>
                             @endif
                             @if($nfErp->status === 'cancelada')
-                            <a href="{{ route('notas-fiscais.criar-da-venda', $item->id) }}" class="text-xs text-indigo-300 underline">Emitir nova</a>
+                            <a href="{{ route('notas-fiscais.criar-da-venda', $item->id) }}" class="small">Emitir nova</a>
                             @endif
-                            @else
-                            <a href="{{ route('notas-fiscais.criar-da-venda', $item->id) }}" class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500">
-                                <i data-lucide="file-plus" class="size-4"></i> Emitir NF-e (conferir antes)
-                            </a>
-                            @endif
-                        </div>
-                        @endif
-                        <p class="text-[11px] text-gray-500 mb-2">Controle manual (para nota emitida em outro sistema):</p>
-                        @if($sitNf === 'emitida')
-                            <div class="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
-                                <i data-lucide="circle-check" class="size-4 inline -mt-0.5"></i>
-                                Emitida{{ $item->nf_externa_numero ? ' · nº ' . $item->nf_externa_numero : '' }}
-                                <div class="text-[11px] text-emerald-300/70 mt-0.5">
-                                    {{ $item->nf_externa_em ? __data_pt($item->nf_externa_em, 1) : '' }}{{ optional($item->nfExternaUsuario)->nome ? ' · ' . $item->nfExternaUsuario->nome : '' }}
-                                </div>
-                            </div>
-                        @elseif($sitNf === 'divergente')
-                            <div class="rounded-lg border border-rose-500/50 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-                                <i data-lucide="triangle-alert" class="size-4 inline -mt-0.5"></i>
-                                Marcada como emitida{{ $item->nf_externa_numero ? ' (nº ' . $item->nf_externa_numero . ')' : '' }} com
-                                <strong>R$ {{ __moeda($item->nf_externa_valor) }}</strong>, mas o valor fiscal agora é
-                                <strong>R$ {{ __moeda($divFiscal['fiscal']) }}</strong>. Confira a nota.
-                            </div>
                         @else
-                            <div class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-                                <i data-lucide="clock" class="size-4 inline -mt-0.5"></i> Pendente
-                            </div>
+                            <a href="{{ route('notas-fiscais.criar-da-venda', $item->id) }}" class="btn btn-sm btn-primary"><i class="bi bi-file-earmark-plus"></i> Emitir NF-e (conferir antes)</a>
                         @endif
+                    </div>
+                    @endif
 
-                        <div class="mt-3 flex flex-col gap-2">
-                            @if($sitNf !== 'emitida' && $divFiscal['tem_fiscal'])
-                            <input type="text" id="lux-nf-numero" maxlength="30" placeholder="Nº da NF-e (opcional)"
-                                value="{{ $item->nf_externa_numero }}"
-                                class="w-full rounded-lg border border-gray-600 bg-gray-900 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-indigo-500 focus:outline-none">
-                            <button type="button" class="lux-nf-acao inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500" data-acao="emitida">
-                                <i data-lucide="file-check" class="size-4"></i> Marcar NF como emitida
-                            </button>
-                            @endif
-                            @if($sitNf === 'emitida' || $sitNf === 'divergente')
-                            <button type="button" class="lux-nf-acao inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-600 px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700" data-acao="pendente">
-                                <i data-lucide="undo-2" class="size-4"></i> Voltar para pendente
-                            </button>
-                            @endif
+                    <p class="small text-muted mb-2">Controle manual (nota emitida em outro sistema):</p>
+                    @if($sitNf === 'emitida')
+                        <div class="vd-nf-box t-success">
+                            <i class="bi bi-check-circle"></i> Emitida{{ $item->nf_externa_numero ? ' · nº ' . $item->nf_externa_numero : '' }}
+                            <small>{{ $item->nf_externa_em ? __data_pt($item->nf_externa_em, 1) : '' }}{{ optional($item->nfExternaUsuario)->nome ? ' · ' . $item->nfExternaUsuario->nome : '' }}</small>
                         </div>
+                    @elseif($sitNf === 'divergente')
+                        <div class="vd-nf-box t-danger">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            Marcada como emitida{{ $item->nf_externa_numero ? ' (nº ' . $item->nf_externa_numero . ')' : '' }} com
+                            <strong>R$ {{ __moeda($item->nf_externa_valor) }}</strong>, mas o valor fiscal agora é
+                            <strong>R$ {{ __moeda($divFiscal['fiscal']) }}</strong>. Confira a nota.
+                        </div>
+                    @else
+                        <div class="vd-nf-box t-warning"><i class="bi bi-clock"></i> Pendente</div>
+                    @endif
+
+                    <div class="mt-3 d-flex flex-column gap-2">
+                        @if($sitNf !== 'emitida' && $divFiscal['tem_fiscal'])
+                        <input type="text" id="lux-nf-numero" maxlength="30" placeholder="Nº da NF-e (opcional)" value="{{ $item->nf_externa_numero }}" class="form-control">
+                        <button type="button" class="lux-nf-acao btn btn-success" data-acao="emitida"><i class="bi bi-file-earmark-check"></i> Marcar NF como emitida</button>
+                        @endif
+                        @if($sitNf === 'emitida' || $sitNf === 'divergente')
+                        <button type="button" class="lux-nf-acao btn btn-outline-secondary" data-acao="pendente"><i class="bi bi-arrow-counterclockwise"></i> Voltar para pendente</button>
+                        @endif
                     </div>
                 </div>
+            </section>
+            @endif
+
+            @if($item->fechada_caixa)
+            <div class="vd-card vd-card-b small text-muted">
+                @if(!empty($usuarioAdm))
+                    Venda travada no caixa. Use <b>Reabrir caixa</b> no topo para permitir alterações.
+                @else
+                    Esta venda está fechada no caixa e não pode ser editada.
                 @endif
-
-                {{-- 6. Ações --}}
-                <div class="rounded-xl border border-gray-700 bg-gray-800 shadow-md p-5">
-                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Ações</p>
-                    <div class="flex flex-col sm:flex-row xl:flex-col gap-3">
-                        @if($item->fechada_caixa)
-                            @if(!empty($usuarioAdm))
-                                <p class="text-sm text-amber-200/90 leading-relaxed">Venda travada no caixa. Use <strong>Reabrir caixa</strong> acima para permitir alterações.</p>
-                            @else
-                                <p class="text-sm text-gray-400 leading-relaxed">Esta venda está fechada no caixa e não pode ser editada.</p>
-                            @endif
-                        @else
-                            <a href="{{ route('vendas.edit', $item->id) }}" class="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-200 shadow-md transition hover:bg-amber-500/20 hover:border-amber-400/60">
-                                <i data-lucide="pencil" class="size-4"></i> Editar
-                            </a>
-                        @endif
-                        <a href="{{ route('vendas.print', ['id' => $item->id, 'download' => 1]) }}" class="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-500/40 bg-sky-500/10 px-4 py-3 text-sm font-medium text-sky-200 shadow-md transition hover:bg-sky-500/20 hover:border-sky-400/60">
-                            <i data-lucide="download" class="size-4"></i> Baixar pedido (PDF)
-                        </a>
-                        @php $podeFichaShow = in_array($item->status_pedido, ['confirmado', 'em_separacao', 'separado', 'alteracao_pendente', 'em_rota_entrega', 'entregue'], true); @endphp
-                        <a href="{{ $podeFichaShow ? route('vendas.print-ficha', $item->id) : '#' }}"
-                            target="{{ $podeFichaShow ? '_blank' : '_self' }}"
-                            class="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-200 shadow-md transition hover:bg-amber-500/20 hover:border-amber-400/60 {{ !$podeFichaShow ? 'opacity-40 pointer-events-none' : '' }}">
-                            <i data-lucide="printer" class="size-4"></i> Ficha de separação
-                        </a>
-                    </div>
-                </div>
             </div>
-        </div>
+            @endif
+        </aside>
     </div>
 </div>
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        if (typeof lucide !== 'undefined' && lucide.createIcons) {
-            lucide.createIcons();
-        }
         var btnReabrir = document.getElementById('lux-venda-reabrir-caixa');
         var csrfToken = '{{ csrf_token() }}';
 
@@ -590,10 +602,7 @@
                     if (!ok) return;
                     fetch("{{ url('vendas/reabrir-caixa') }}/" + encodeURIComponent(vid), {
                         method: 'POST',
-                        headers: {
-                            'X-CSRF-TOKEN': csrfToken,
-                            'Accept': 'application/json'
-                        }
+                        headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' }
                     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
                     .then(function (x) {
                         if (!x.ok) {
@@ -607,6 +616,12 @@
                 });
             });
         }
+        // depois de anexar/excluir comprovante, atualiza o resumo de pagamento desta tela
+        var modal = document.getElementById('modal-lux-comprovantes');
+        if (modal) modal.addEventListener('hidden.bs.modal', function () {
+            if (modal.dataset.mudou === '1') window.location.reload();
+        });
     });
 </script>
+@include('vendas.partials.comprovantes_modal')
 @endsection

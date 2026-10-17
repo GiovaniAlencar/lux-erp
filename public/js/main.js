@@ -536,13 +536,39 @@ function _productSearchCacheKey(data, term) {
     return [t, empresa_id, usuario_id, filial_id].join('|');
 }
 
+// busca de produto em 2 linhas: nome + preço / marca · categoria · estoque
+function luxProdutoOpcao(o) {
+    if (!o.id || !o.lux) return o.text;
+    var esc = function (t) { return $('<span>').text(t == null ? '' : String(t)).html(); };
+    var q = o.lux.estoque;
+    var qFmt = q == null ? '' : q.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+    var est = q == null ? '' : (q > 0
+        ? '<span class="lux-po-est ok">' + qFmt + ' em estoque</span>'
+        : '<span class="lux-po-est zero">sem estoque</span>');
+    var meta = [];
+    if (o.lux.marca) meta.push(esc(o.lux.marca));
+    if (o.lux.categoria) meta.push(esc(o.lux.categoria));
+    if (o.lux.fiscal) meta.push('<span class="lux-po-f">F</span>');
+    var preco = 'R$ ' + o.lux.preco.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return $(
+        '<div class="lux-po' + (q != null && q <= 0 ? ' is-zero' : '') + '">' +
+            '<div class="lux-po-l1"><span class="lux-po-nome">' + esc(o.text) + '</span><span class="lux-po-preco">' + preco + '</span></div>' +
+            '<div class="lux-po-l2"><span class="lux-po-meta">' + (meta.join(' · ') || '&nbsp;') + '</span>' + est + '</div>' +
+        '</div>'
+    );
+}
+
 function setupProdutoSelect(selector, width) {
-    $(selector).select2({
+    $(selector).on('select2:open', function () {
+        $('.select2-container--open .select2-dropdown').addClass('lux-prod-dd');
+    }).select2({
         minimumInputLength: 3,
         language: "pt-BR",
         placeholder: "Digite para buscar o produto",
         width: width,
         theme: "bootstrap4",
+        templateResult: luxProdutoOpcao,
+        templateSelection: function (o) { return o.text; },
 
         ajax: {
             cache: true,
@@ -624,16 +650,15 @@ function setupProdutoSelect(selector, width) {
                 $.each(response, function (i, v) {
                     var o = {};
                     o.id = v.id;
-
-                    o.text = v.nome + " " + v.str_grade;
-                    o.text += " | R$ " + parseFloat(v.valor_venda)
-                        .toFixed(casas_decimais)
-                        .replace(".", ",");
-
-                    if (v.estoque) {
-                        o.text += " | estoque: " + v.estoque.quantidade;
-                    }
-
+                    // texto que fica no campo depois de escolher: só o nome
+                    o.text = (v.nome + " " + (v.str_grade || "")).trim();
+                    o.lux = {
+                        preco: parseFloat(v.valor_venda || 0),
+                        estoque: v.estoque ? parseFloat(v.estoque.quantidade || 0) : null,
+                        marca: v.marca || "",
+                        categoria: v.categoria || "",
+                        fiscal: !!v.fiscal
+                    };
                     results.push(o);
                 });
 

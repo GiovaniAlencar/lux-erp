@@ -150,7 +150,8 @@ class EstoqueFiscalController extends Controller
         $empresaId = $request->empresa_id;
         $ok = 0;
         $avisos = [];
-        DB::transaction(function () use ($notas, $empresaId, &$ok, &$avisos) {
+        $infos = [];
+        DB::transaction(function () use ($notas, $empresaId, &$ok, &$avisos, &$infos) {
             $svc = new EstoqueFiscal();
             $stockMove = new \App\Helpers\StockMove();
             foreach ($notas as $n) {
@@ -187,11 +188,34 @@ class EstoqueFiscalController extends Controller
                     continue;
                 }
                 $somaNota = array_sum(array_map(fn ($l) => max(0, $l[2]), $linhas));
+                $difalTotal = 0.0;
                 foreach ($linhas as $k => [$p, $q, $custoTotal, $r, $baseDifal]) {
+                    $difalTotal += $baseDifal * $difalPct / 100;
                     $extra = $baseDifal * $difalPct / 100
                         + ($somaNota > 0 ? $outrosCustos * max(0, $custoTotal) / $somaNota : 0);
                     $final = $custoTotal + $extra;
                     $linhas[$k] = [$p, $q, $final > 0 ? $final / $q : null, $r];
+                }
+                // DIFAL vira uma conta a pagar desta nota (aparece no financeiro para pagar no vencimento)
+                if ($difalTotal >= 0.01) {
+                    $venc = (string) ($n['difal_vencimento'] ?? '');
+                    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $venc)) {
+                        $venc = now()->endOfMonth()->format('Y-m-d');
+                    }
+                    \App\Models\ContaPagar::create([
+                        'empresa_id' => (int) $empresaId,
+                        'categoria_id' => \App\Services\Financeiro::categoriaPagar($empresaId, 'Impostos (DIFAL)'),
+                        'fornecedor_id' => 0,
+                        'referencia' => mb_substr('DIFAL · NF ' . $numero . ' · ' . ($n['emitente'] ?? ''), 0, 255),
+                        'valor_integral' => round($difalTotal, 2),
+                        'valor_pago' => 0,
+                        'data_vencimento' => $venc,
+                        'data_pagamento' => $venc,
+                        'status' => 0,
+                        'tipo_pagamento' => null,
+                        'filial_id' => null,
+                    ]);
+                    $infos[] = 'DIFAL da NF ' . $numero . ' lançado em Contas a pagar (R$ ' . __moeda($difalTotal) . ', vence ' . date('d/m/Y', strtotime($venc)) . ').';
                 }
                 $infoCustos = ($difalPct > 0 ? ' · DIFAL ' . rtrim(rtrim(number_format($difalPct, 2, ',', ''), '0'), ',') . '%' : '')
                     . ($outrosCustos > 0 ? ' · outros custos R$ ' . number_format($outrosCustos, 2, ',', '.') : '');
@@ -277,7 +301,7 @@ class EstoqueFiscalController extends Controller
             }
         });
 
-        $r = redirect()->route('estoque-fiscal.index')->with('flash_sucesso', $ok . ' item(ns) lançado(s).');
+        $r = redirect()->route('estoque-fiscal.index')->with('flash_sucesso', trim($ok . ' item(ns) lançado(s). ' . implode(' ', $infos)));
         if ($avisos) {
             $r->with('flash_erro', implode(' | ', $avisos));
         }
