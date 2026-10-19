@@ -66,7 +66,8 @@ class VendaController extends Controller
         $cliente_id = $request->get('cliente_id');
         $type_search = $request->get('type_search');
         $estado_emissao = $request->get('estado_emissao');
-        $pesquisa_data = $request->get('pesquisa_data');
+        // só colunas de data conhecidas (o valor vem da URL)
+        $pesquisa_data = in_array($request->get('pesquisa_data'), ['created_at', 'data_entrega'], true) ? $request->get('pesquisa_data') : 'created_at';
         $data_emissao = $request->get('data_emissao');
         $filial_id = $request->get('filial_id');
         $filter_usuario_id = $request->get('filter_usuario_id');
@@ -124,7 +125,18 @@ class VendaController extends Controller
                 return $query->where('usuario_id', $filter_usuario_id);
             })
             ->when(count($filter_status_pedido_selecionados) > 0, function ($query) use ($filter_status_pedido_selecionados) {
-                return $query->whereIn('status_pedido', $filter_status_pedido_selecionados);
+                // "aguardando confirmação" inclui o status antigo em_elaboracao e pedidos sem status
+                $sts = $filter_status_pedido_selecionados;
+                $aguardando = in_array('aguardando_confirmacao', $sts, true);
+                if ($aguardando) {
+                    $sts[] = 'em_elaboracao';
+                }
+                return $query->where(function ($w) use ($sts, $aguardando) {
+                    $w->whereIn('status_pedido', array_unique($sts));
+                    if ($aguardando) {
+                        $w->orWhereNull('status_pedido');
+                    }
+                });
             })
             ->when(!empty($filter_status_pagamento), function ($query) use ($filter_status_pagamento) {
                 return $query->where('status_pagamento', $filter_status_pagamento);
@@ -210,6 +222,33 @@ class VendaController extends Controller
                 ->keyBy('venda_id');
         }
 
+        // cartões do topo: pedidos de hoje e a fila de cada etapa
+        $baseResumo = fn () => Venda::where('empresa_id', $request->empresa_id)->where(function ($q) {
+            $q->whereNull('status_pedido')->orWhere('status_pedido', '!=', 'cancelada');
+        });
+        $exprTotal = 'valor_total - COALESCE(desconto, 0) + COALESCE(acrescimo, 0)'
+            . (\Illuminate\Support\Facades\Schema::hasColumn('vendas', 'frete') ? ' + COALESCE(frete, 0)' : '');
+        $hojeIni = now()->startOfDay();
+        $contaStatus = function (array $sts) use ($baseResumo, $hojeIni) {
+            $q = $baseResumo()->where(function ($w) use ($sts) {
+                $w->whereIn('status_pedido', $sts);
+                if (in_array('aguardando_confirmacao', $sts, true)) {
+                    $w->orWhereNull('status_pedido');
+                }
+            });
+            return ['total' => (clone $q)->count(), 'hoje' => (clone $q)->where('created_at', '>=', $hojeIni)->count()];
+        };
+        $resumoVendas = [
+            'hoje' => $baseResumo()->where('created_at', '>=', $hojeIni)->count(),
+            'hoje_valor' => (float) $baseResumo()->where('created_at', '>=', $hojeIni)->sum(\DB::raw($exprTotal)),
+            'ontem' => $baseResumo()->whereBetween('created_at', [now()->subDay()->startOfDay(), $hojeIni])->count(),
+            'aguardando' => $contaStatus(['aguardando_confirmacao', 'em_elaboracao']),
+            'separacao' => $contaStatus(['em_separacao']),
+            'confirmados' => $contaStatus(['confirmado']),
+            'separados' => $contaStatus(['separado']),
+            'rota' => $contaStatus(['em_rota_entrega']),
+        ];
+
         // quantos comprovantes de pagamento cada venda da página tem (tabela do SQL 27)
         $comprovantesPorVenda = [];
         if (!empty($vendaIdsPagina) && \Illuminate\Support\Facades\Schema::hasTable('venda_comprovantes')) {
@@ -222,6 +261,7 @@ class VendaController extends Controller
         }
 
         return view('vendas.index', compact(
+            'resumoVendas',
             'comprovantesPorVenda',
             'data',
             'config',
@@ -440,6 +480,8 @@ class VendaController extends Controller
                             ]);
                         }
                     }
+                    // restante a receber (quando as parcelas não cobrem o total) e baixas dos comprovantes
+                    \App\Services\RecebimentoVenda::sincronizar($venda);
                     $venda->load('cliente');
                     $this->registrarAuditoriaVenda(
                         $venda->id,
@@ -815,6 +857,8 @@ class VendaController extends Controller
                             ]);
                         }
                     }
+                    // contas a receber foram recriadas: refaz o restante e as baixas dos comprovantes
+                    \App\Services\RecebimentoVenda::sincronizar($item, true);
                     // if($freteAux){
                     //     $freteAux->delete();
                     // }

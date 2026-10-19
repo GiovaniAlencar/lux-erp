@@ -31,7 +31,9 @@
         preparar(el);
         // remove a máscara antiga se alguém deixou as duas classes
         if (window.jQuery && jQuery.fn.unmask) { try { jQuery(el).unmask(); } catch (x) {} }
-        setTimeout(function () { try { el.select(); } catch (x) {} }, 0);
+        // seleciona tudo ao entrar (para digitar por cima), mas só se a pessoa ainda não começou a digitar
+        var antes = el.value;
+        setTimeout(function () { if (el.value === antes && document.activeElement === el) { try { el.select(); } catch (x) {} } }, 0);
     });
     document.addEventListener('input', function (e) {
         var el = e.target;

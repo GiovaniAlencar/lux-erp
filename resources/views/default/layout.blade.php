@@ -42,7 +42,7 @@
         <title>{{$title}}</title>
 
         {{-- tema único da LUX (claro/escuro): padroniza todas as telas --}}
-        <link href="/assets/css/lux-erp.css?v=5" rel="stylesheet" />
+        <link href="/assets/css/lux-erp.css?v=8" rel="stylesheet" />
 
         @yield('css')
     </head>
@@ -392,7 +392,7 @@
 <script src="/assets/js/select2.min.js"></script>
 <script src="/assets/js/app.js"></script>
 <script src="/js/main.js?v=20261017"></script>
-<script src="/js/lux-dinheiro.js?v=1"></script>
+<script src="/js/lux-dinheiro.js?v=2"></script>
 <script src="/js/theme.js"></script>
 <script>
     // tema claro/escuro (fica salvo no usuário)

@@ -683,3 +683,33 @@ html.dark-theme .lux-comp-badge{box-shadow:0 0 0 2px #111}
 .btn-check:checked + .btn-outline-success, .btn-check:active + .btn-outline-success { background: var(--lx-success) !important; border-color: var(--lx-success) !important; color: #fff !important; }
 .btn-check:checked + .btn-outline-primary, .btn-check:checked + .btn-outline-secondary { background: var(--lx-primary) !important; border-color: var(--lx-primary) !important; color: var(--lx-on-primary) !important; }
 html.dark-theme .btn-check:checked + .btn-outline-danger, html.dark-theme .btn-check:checked + .btn-outline-success { color: #0b0b0c !important; }
+
+/* ---------- Vendas: cartões do topo ---------- */
+#lux-vendas-index .vc-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .75rem; margin: 1.25rem 0 1rem; }
+@media (max-width: 1399.98px) { #lux-vendas-index .vc-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 767.98px) { #lux-vendas-index .vc-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+#lux-vendas-index .vc-card { display: block; background: var(--lx-surface); border: 1px solid var(--lx-border); border-radius: var(--lx-radius); padding: .85rem 1rem; text-decoration: none; color: var(--lx-text); box-shadow: var(--lx-shadow); transition: border-color .15s, transform .15s; min-width: 0; }
+#lux-vendas-index .vc-card:hover { border-color: var(--lx-border-strong); transform: translateY(-1px); color: var(--lx-text); }
+#lux-vendas-index .vc-card.on { border-color: var(--lx-gold); box-shadow: 0 0 0 1px var(--lx-gold) inset; }
+#lux-vendas-index .vc-card.alerta { border-color: var(--lx-warning); }
+#lux-vendas-index .vc-card.alerta .vc-num { color: var(--lx-warning); }
+#lux-vendas-index .vc-top { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+#lux-vendas-index .vc-rot { font-size: .78rem; font-weight: 500; color: var(--lx-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#lux-vendas-index .vc-ico { width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; font-size: .95rem; flex: 0 0 30px; }
+#lux-vendas-index .vc-ico.t-gold { background: var(--lx-gold-soft); color: var(--lx-gold-strong); }
+#lux-vendas-index .vc-ico.t-warning { background: var(--lx-warning-soft); color: var(--lx-warning); }
+#lux-vendas-index .vc-ico.t-info { background: var(--lx-info-soft); color: var(--lx-info); }
+#lux-vendas-index .vc-ico.t-success { background: var(--lx-success-soft); color: var(--lx-success); }
+#lux-vendas-index .vc-ico.t-violet { background: rgba(139, 92, 246, .12); color: #7c3aed; }
+html.dark-theme #lux-vendas-index .vc-ico.t-violet { color: #a78bfa; }
+#lux-vendas-index .vc-num { font-size: 1.75rem; font-weight: 700; line-height: 1.1; margin-top: .3rem; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+#lux-vendas-index .vc-sub { font-size: .72rem; color: var(--lx-muted); margin-top: .15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* check de "pago 100%" ao lado do clipe dos comprovantes */
+.lux-comp-pago { position: absolute; bottom: -6px; right: -6px; width: 16px; height: 16px; border-radius: 50%; background: var(--lx-success); color: #fff; font-size: 11px; line-height: 16px; text-align: center; box-shadow: 0 0 0 2px var(--lx-surface, #fff); }
+.lux-comp-pago i { line-height: 16px; }
+html.dark-theme .lux-comp-pago { color: #0b0b0c; box-shadow: 0 0 0 2px #111; }
+
+/* Vendas: respiro nas laterais (cartões e lista não encostam no menu nem na borda) */
+#lux-vendas-index.lux-vendas-page { padding-left: 1.25rem !important; padding-right: 1.25rem !important; padding-bottom: 1rem; }
+@media (max-width: 767.98px) { #lux-vendas-index.lux-vendas-page { padding-left: .75rem !important; padding-right: .75rem !important; } }

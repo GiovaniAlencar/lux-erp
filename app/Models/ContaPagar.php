@@ -9,7 +9,7 @@ class ContaPagar extends Model
 	protected $fillable = [
 		'compra_id', 'data_vencimento', 'data_pagamento', 'valor_integral', 'valor_pago', 
 		'referencia', 'categoria_id', 'status', 'empresa_id', 'fornecedor_id', 'tipo_pagamento',
-		'filial_id'
+		'filial_id', 'despesa'
 	];
 
 	public function filial(){

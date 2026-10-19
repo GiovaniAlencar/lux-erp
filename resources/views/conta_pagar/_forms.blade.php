@@ -31,7 +31,7 @@
 
     <div class="col-md-2">
         {!!Form::tel('valor_integral', 'Valor')
-        ->attrs(['class' => 'moeda'])->required()
+        ->attrs(['class' => 'lux-dinheiro'])->required()
         ->value(isset($item) ? __moeda($item->valor_integral) : '')
         !!}
     </div>
@@ -47,11 +47,16 @@
         !!}
     </div>
 
-    <div class="col-md-2">
-        {!!Form::select('status', 'Conta paga', ['0' => 'Não', '1' => 'Sim'])
-        ->attrs(['class' => 'form-select'])
-        !!}
+    {{-- pago/não pago só muda pelo botão "Pagar" da lista (lança a saída no extrato) --}}
+    @if(\App\Http\Controllers\ContaPagarController::temDespesa())
+    <div class="col-md-3">
+        <label class="form-label" for="inp-despesa">Entra como despesa?</label>
+        <select name="despesa" id="inp-despesa" class="form-select">
+            <option value="1" @selected(!isset($item) || $item->despesa)>Sim (diminui o lucro do mês)</option>
+            <option value="0" @selected(isset($item) && !$item->despesa)>Não (repasse ou custo do produto)</option>
+        </select>
     </div>
+    @endif
 
     @isset($item)
     {!! __view_locais_select_edit("Local", $item->filial_id) !!}

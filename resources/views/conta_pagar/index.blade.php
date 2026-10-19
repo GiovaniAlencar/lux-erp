@@ -5,9 +5,9 @@
         <div class="card-body p-4">
             <div class="page-breadcrumb d-sm-flex align-items-center mb-3">
                 <div class="ms-auto">
-                    <a href="{{ route('conta-pagar.create')}}" type="button" class="btn btn-success">
+                    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modal-nova-conta-pagar">
                         <i class="bx bx-plus"></i> Nova conta
-                    </a>
+                    </button>
                 </div>
             </div>
             <div class="col">
@@ -17,11 +17,30 @@
                 ->all())
                 ->get() !!}
                 <div class="row">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         {!!Form::select('fornecedor_id', 'Fornecedor')
                         ->attrs(['class' => 'select2'])
                         !!}
                     </div>
+                    <div class="col-md-3">
+                        <label class="form-label" for="filtro-categoria">Categoria</label>
+                        <select name="categoria_id" id="filtro-categoria" class="form-select" onchange="this.form.submit()">
+                            <option value="">Todas</option>
+                            @foreach($categorias as $cat)
+                            <option value="{{ $cat->id }}" @selected(request('categoria_id') == $cat->id)>{{ $cat->nome }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    @if(\App\Http\Controllers\ContaPagarController::temDespesa())
+                    <div class="col-md-2">
+                        <label class="form-label" for="filtro-despesa">Despesa</label>
+                        <select name="despesa" id="filtro-despesa" class="form-select" onchange="this.form.submit()">
+                            <option value="">Todas</option>
+                            <option value="1" @selected(request('despesa') === '1')>Entra como despesa</option>
+                            <option value="0" @selected(request('despesa') === '0')>Fora da despesa</option>
+                        </select>
+                    </div>
+                    @endif
                     <div class="col-md-2">
                         {!!Form::select('type_search', 'Tipo de pesquisa',
                         [
@@ -70,7 +89,7 @@
                             <table class="table mb-0 table-striped">
                                 <thead class="">
                                     <tr>
-                                        <th width="">Fornecedor</th>
+                                        <th width="">Descrição</th>
                                         <th width="">Categoria</th>
                                         @if(empresaComFilial())
                                         <th><span style="width: 150px;">Local</span></th>
@@ -87,7 +106,11 @@
                                 <tbody>
                                     @forelse($data as $item)
                                     <tr>
-                                        <td>{{ $item->fornecedor ? $item->fornecedor->razao_social : '--' }}</td>
+                                        <td style="min-width:220px;white-space:normal">
+                                            <div class="fw-semibold">{{ $item->referencia ?: '—' }}</div>
+                                            @if($item->fornecedor)<div class="small text-muted">{{ $item->fornecedor->razao_social }}</div>@endif
+                                            @if(\App\Http\Controllers\ContaPagarController::temDespesa() && !$item->despesa)<span class="badge rounded-pill text-bg-light border" title="Não entra como despesa no fechamento do mês">fora da despesa</span>@endif
+                                        </td>
                                         <td>{{ optional($item->categoria)->nome ?? '--' }}</td>
                                         @if(empresaComFilial())
                                         <td>
@@ -149,4 +172,20 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="modal-nova-conta-pagar" tabindex="-1" aria-hidden="true" aria-labelledby="ncp-titulo">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" id="ncp-titulo">Nova conta a pagar</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+        @include('conta_pagar._nova')
+    </div></div>
+</div>
+@if($errors->any() || old('referencia'))
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var m = document.getElementById('modal-nova-conta-pagar');
+    m.querySelector('form').dataset.manter = '1';
+    bootstrap.Modal.getOrCreateInstance(m).show();
+});
+</script>
+@endif
 @endsection

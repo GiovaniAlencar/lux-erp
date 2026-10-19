@@ -183,8 +183,12 @@
             modalEl.querySelector('.lux-comp-dica').classList.remove('d-none');
         }
         var inpValor = form.querySelector('[name=valor]');
-        inpValor.value = d.falta > 0.009 ? num(d.falta) : '';
+        // só sugere o "falta" se a pessoa ainda não digitou um valor
+        if (!inpValor.dataset.editado) inpValor.value = d.falta > 0.009 ? num(d.falta) : '';
 
+        document.querySelectorAll('[data-lux-comp-pago="' + d.venda + '"]').forEach(function (el) {
+            el.classList.toggle('d-none', d.status_pagamento !== 'pago');
+        });
         document.querySelectorAll('[data-lux-comp-count="' + d.venda + '"]').forEach(function (el) {
             el.textContent = d.itens.length ? String(d.itens.length) : '';
             el.classList.toggle('d-none', !d.itens.length);
@@ -204,6 +208,7 @@
         var contaEscolhida = form.querySelector('[name=conta]').value;
         form.reset();
         if (contaEscolhida) form.querySelector('[name=conta]').value = contaEscolhida; // mantém a conta
+        delete form.querySelector('[name=valor]').dataset.editado;
         if (typeof mostrarPrevia === 'function') mostrarPrevia(null);
         drop.classList.remove('has-file');
         dropTxt.innerHTML = dropTxtOriginal;
@@ -219,6 +224,7 @@
         abrirModal();
     });
 
+    form.querySelector('[name=valor]').addEventListener('input', function () { this.dataset.editado = '1'; });
     var inpArq = form.querySelector('[name=arquivo]');
     var prev = modalEl.querySelector('.lux-comp-prev');
     var prevUrl = null;

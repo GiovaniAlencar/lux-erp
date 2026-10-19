@@ -361,7 +361,7 @@
             </section>
 
             {{-- Pagamento --}}
-            <section class="vd-card">
+            <section class="vd-card" id="pagamento">
                 <div class="vd-card-h"><h2><i class="bi bi-credit-card"></i> Pagamento</h2></div>
                 <div class="vd-card-b">
                     <div class="vd-pay-grid">
@@ -370,13 +370,21 @@
                             <div><dt>Tipo</dt><dd>{{ \App\Models\Venda::getTipo($item->tipo_pagamento) ?: '—' }}</dd></div>
                         </dl>
                         <div>
-                            <div class="vd-label">Parcelas</div>
+                            <div class="vd-label">Contas a receber</div>
                             <table class="vd-table" style="border:1px solid var(--lx-border);border-radius:8px;overflow:hidden">
                                 <tbody>
                                     @if(count($item->duplicatas) > 0)
-                                        @foreach ($item->duplicatas as $i => $dup)
+                                        @foreach ($item->duplicatas->sortBy(fn ($d) => [str_contains((string) $d->observacao, \App\Services\RecebimentoVenda::MARCA_RESTANTE) ? 1 : 0, $d->data_vencimento, $d->id])->values() as $i => $dup)
+                                        @php
+                                            $ehRestante = str_contains((string) $dup->observacao, \App\Services\RecebimentoVenda::MARCA_RESTANTE);
+                                            $rec = (float) $dup->valor_recebido;
+                                            $stDup = $dup->status ? ['success', 'Recebida'] : ($rec > 0 ? ['info', 'Parcial · falta ' . __moeda(max(0, $dup->valor_integral - $rec))] : ['warning', 'A receber']);
+                                        @endphp
                                         <tr>
-                                            <td style="padding:.45rem .75rem">{{ $i + 1 }}ª · {{ $dataBr($dup->data_vencimento) ?? '—' }}</td>
+                                            <td style="padding:.45rem .75rem">
+                                                {{ $ehRestante ? 'Restante' : ($i + 1) . 'ª' }} · {{ $dataBr($dup->data_vencimento) ?? '—' }}
+                                                <div><span class="vd-pill t-{{ $stDup[0] }}" style="padding:.05rem .5rem;font-size:.7rem">{{ $stDup[1] }}</span></div>
+                                            </td>
                                             <td class="num" style="padding:.45rem .75rem"><b>{{ __moeda($dup->valor_integral) }}</b></td>
                                         </tr>
                                         @endforeach

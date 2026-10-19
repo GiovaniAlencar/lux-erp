@@ -234,6 +234,43 @@
 @endphp
 
 <div id="lux-vendas-index" data-vendas-ui="{{ $vendasUiDark ? 'dark' : 'light' }}" class="lux-vendas-page font-sans antialiased col-12 w-100 px-0 min-w-0 flex flex-col min-h-0 @if($vendasUiDark) dark text-gray-100 bg-slate-900 @else text-gray-900 bg-gray-100 @endif">
+    @isset($resumoVendas)
+    @php
+        // só pedidos lançados HOJE (o número do cartão bate com a lista ao clicar)
+        $r = $resumoVendas;
+        $hojeStr = now()->format('Y-m-d');
+        $deHoje = ['pesquisa_data' => 'created_at', 'start_date' => $hojeStr, 'end_date' => $hojeStr];
+        $filtroSt = fn (array $st) => route('vendas.index', $deHoje + ['filter_status_pedido' => $st]);
+        $deTotal = fn ($n) => $r['hoje'] ? ($n . ' de ' . $r['hoje'] . ' pedido' . ($r['hoje'] === 1 ? '' : 's') . ' hoje') : 'nenhum pedido hoje';
+        $cardsVendas = [
+            ['rot' => 'Pedidos hoje', 'num' => $r['hoje'], 'ico' => 'cart-check', 'tom' => 'gold', 'st' => null,
+             'sub' => 'ontem: ' . $r['ontem'], 'url' => route('vendas.index', $deHoje)],
+            ['rot' => 'Aguardando confirmação', 'num' => $r['aguardando']['hoje'], 'ico' => 'hourglass-split', 'tom' => 'warning', 'st' => ['aguardando_confirmacao'],
+             'sub' => $deTotal($r['aguardando']['hoje']), 'alerta' => $r['aguardando']['hoje'] > 0],
+            ['rot' => 'Em separação', 'num' => $r['separacao']['hoje'] + $r['confirmados']['hoje'], 'ico' => 'box-seam', 'tom' => 'info', 'st' => ['em_separacao', 'confirmado'],
+             'sub' => $deTotal($r['separacao']['hoje'] + $r['confirmados']['hoje'])],
+            ['rot' => 'Separados', 'num' => $r['separados']['hoje'], 'ico' => 'box2-fill', 'tom' => 'success', 'st' => ['separado'],
+             'sub' => $deTotal($r['separados']['hoje'])],
+            ['rot' => 'Em rota', 'num' => $r['rota']['hoje'], 'ico' => 'truck', 'tom' => 'violet', 'st' => ['em_rota_entrega'],
+             'sub' => $deTotal($r['rota']['hoje'])],
+        ];
+        $stSel = $filter_status_pedido_selecionados ?? [];
+        $filtroHoje = request('start_date') === $hojeStr && request('end_date') === $hojeStr;
+    @endphp
+    <div class="vc-cards">
+        @foreach($cardsVendas as $c)
+        @php
+            $url = $c['st'] ? $filtroSt($c['st']) : $c['url'];
+            $on = $filtroHoje && ($c['st'] ? (!array_diff($stSel, $c['st']) && !array_diff($c['st'], $stSel)) : !count($stSel));
+        @endphp
+        <a href="{{ $on ? route('vendas.index') : $url }}" class="vc-card {{ $on ? 'on' : '' }} {{ !empty($c['alerta']) ? 'alerta' : '' }}" title="{{ $on ? 'Mostrar todos' : 'Ver na lista' }}">
+            <div class="vc-top"><span class="vc-rot">{{ $c['rot'] }}</span><span class="vc-ico t-{{ $c['tom'] }}"><i class="bi bi-{{ $c['ico'] }}"></i></span></div>
+            <div class="vc-num">{{ number_format($c['num'], 0, ',', '.') }}</div>
+            <div class="vc-sub">{{ $c['sub'] }}</div>
+        </a>
+        @endforeach
+    </div>
+    @endisset
 <div class="min-w-0 w-full max-w-none rounded-2xl shadow-xl flex flex-col flex-1 min-h-0 @if($vendasUiDark) border border-slate-700/70 bg-slate-950/35 shadow-black/30 ring-1 ring-white/5 @else border border-gray-200 bg-white shadow-gray-200/40 ring-1 ring-gray-900/5 @endif">
 
     {{-- Filtros: duas linhas Bootstrap (soma 12 colunas) — Local/Vendedor alinhados ao grid --}}
@@ -289,6 +326,7 @@
                     <label class="form-label small mb-0 @if($vendasUiDark) text-gray-400 @else text-gray-600 @endif">Status venda</label>
                     <select name="filter_status_pedido[]" id="filter_status_pedido" class="form-select form-select-sm" multiple="multiple">
                         @foreach($labelStatusPedidoVenda as $k => $lbl)
+                            @continue($k === 'em_elaboracao') {{-- status antigo: entra junto com "Aguardando confirmação" --}}
                             <option value="{{ $k }}" {{ in_array($k, $filter_status_pedido_selecionados ?? [], true) ? 'selected' : '' }}>{{ $lbl }}</option>
                         @endforeach
                     </select>
@@ -547,6 +585,7 @@
                                             <button type="button" data-lux-comprovantes="{{ $item->id }}" class="relative inline-flex items-center justify-center p-2 border-l @if($vendasUiDark) text-emerald-200/95 bg-gray-800/95 border-gray-600/80 hover:bg-emerald-500/20 @else text-emerald-700 bg-white border-gray-200 hover:bg-emerald-50 @endif" title="Comprovantes de pagamento" aria-label="Comprovantes de pagamento" data-bs-toggle="tooltip" data-bs-placement="top">
                                                 <i data-lucide="paperclip" class="size-4"></i>
                                                 <span data-lux-comp-count="{{ $item->id }}" class="lux-comp-badge {{ $qtdComp ? '' : 'd-none' }}">{{ $qtdComp ?: '' }}</span>
+                                                <span data-lux-comp-pago="{{ $item->id }}" class="lux-comp-pago {{ ($item->status_pagamento ?? '') === 'pago' ? '' : 'd-none' }}" title="Pago 100%"><i class="bi bi-check-lg"></i></span>
                                             </button>
                                             @if(!$item->fechada_caixa)
                                                 <a href="{{ route('vendas.edit', $item->id) }}" class="inline-flex items-center justify-center p-2 border-l venda-acao-editar @if($vendasUiDark) text-gray-300 bg-gray-800/95 border-gray-600/80 hover:bg-gray-700 hover:text-white @else text-gray-600 bg-white border-gray-200 hover:bg-gray-100 hover:text-gray-900 @endif" title="Alterar itens, cliente ou valores" aria-label="Editar" data-bs-toggle="tooltip" data-bs-placement="top">

@@ -90,7 +90,7 @@
                                     @forelse($data as $item)
                                     <tr>
                                         
-                                        <td>{{ isset($item->cliente) ? $item->cliente->razao_social : '--' }}</td>
+                                        <td>{{ isset($item->cliente) ? $item->cliente->razao_social : '--' }}@if($item->venda_id)<div class="small text-muted"><a href="{{ route('vendas.show', $item->venda_id) }}">Venda #{{ $item->venda_id }}</a>{{ str_contains((string) $item->observacao, \App\Services\RecebimentoVenda::MARCA_RESTANTE) ? ' · restante' : '' }}</div>@endif</td>
                                         <td>{{ $item->categoria->nome }}</td>
                                         @if(empresaComFilial())
                                         <td>
@@ -108,6 +108,10 @@
                                             @if($item->status)
                                             <span class="btn btn-success position-relative me-lg-5 btn-sm">
                                                 <i class="bx bx-like"></i> Recebido
+                                            </span>
+                                            @elseif((float) $item->valor_recebido > 0)
+                                            <span class="btn btn-info position-relative me-lg-5 btn-sm text-white" title="Falta R$ {{ __moeda(max(0, $item->valor_integral - $item->valor_recebido)) }}">
+                                                <i class="bx bx-adjust"></i> Parcial
                                             </span>
                                             @else
                                             <span class="btn btn-warning position-relative me-lg-5 btn-sm">
@@ -130,9 +134,16 @@
                                                 </button>
                                                 @endif
 
+                                                @if($item->venda_id)
+                                                {{-- conta de venda: recebe anexando o comprovante na venda (entra no extrato e dá baixa aqui) --}}
+                                                <a title="Receber: anexe o comprovante na venda" href="{{ route('vendas.show', $item->venda_id) }}#pagamento" class="btn btn-success btn-sm text-white">
+                                                    <i class="bx bx-dollar"></i>
+                                                </a>
+                                                @else
                                                 <a title="Receber" href="{{ route('conta-receber.pay', $item) }}" class="btn btn-success btn-sm text-white">
                                                     <i class="bx bx-dollar"></i>
                                                 </a>
+                                                @endif
                                                 @endif
 
                                             </form>

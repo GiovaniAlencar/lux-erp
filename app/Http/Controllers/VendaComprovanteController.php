@@ -232,6 +232,7 @@ class VendaComprovanteController extends Controller
                 }
 
                 $this->recalcularStatus($v);
+                \App\Services\RecebimentoVenda::sincronizar($v);
                 $this->auditar($v, 'comprovante_anexado', 'Comprovante anexado'
                     . ($valor ? ': R$ ' . __moeda($valor) : '')
                     . ($finConta ? ' em ' . $finConta->nome . ' (lançado no financeiro)' : ($contaTexto ? ' · ' . VendaComprovante::nomeConta($contaTexto) : ''))
@@ -276,6 +277,7 @@ class VendaComprovanteController extends Controller
             $valor = $c->valor;
             $c->delete();
             $this->recalcularStatus($v);
+            \App\Services\RecebimentoVenda::sincronizar($v, true);
             $this->auditar($v, 'comprovante_excluido', 'Comprovante excluído' . ($valor ? ' (R$ ' . __moeda($valor) . ')' : '') . '.');
         });
         Storage::disk('local')->delete($arquivo);
