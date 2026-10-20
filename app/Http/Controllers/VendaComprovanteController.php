@@ -259,7 +259,8 @@ class VendaComprovanteController extends Controller
         // manda para o grupo do WhatsApp (fila; não atrasa o vendedor nem quebra se a Evolution cair)
         try {
             $c = VendaComprovante::where('venda_id', $v->id)->where('arquivo', $caminho)->first();
-            if ($c) {
+            // só os da conta configurada (ex.: Conta 2 / Orion)
+            if ($c && \App\Console\Commands\EnviarWhatsappComprovantes::contaVaiProGrupo($finConta, $c->conta)) {
                 \App\Console\Commands\EnviarWhatsappComprovantes::enfileirar($c, $this->legendaWhatsapp($v->fresh(['cliente:id,razao_social']), $c, $finConta));
             }
         } catch (\Throwable $e) {

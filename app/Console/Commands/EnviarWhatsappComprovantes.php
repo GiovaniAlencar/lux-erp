@@ -73,6 +73,25 @@ class EnviarWhatsappComprovantes extends Command
         ]);
     }
 
+    /**
+     * O comprovante é de uma conta que vai para o grupo? (config lux.evolution.conta_comprovantes)
+     * Confere o nome da conta do Financeiro; sem Financeiro, "Conta 2" (nao_fiscal) conta como ela.
+     */
+    public static function contaVaiProGrupo(?\App\Models\FinConta $conta, ?string $contaTexto): bool
+    {
+        $filtro = trim((string) config('lux.evolution.conta_comprovantes'));
+        if ($filtro === '') {
+            return true;
+        }
+        if ($conta) {
+            return mb_stripos($conta->nome, $filtro) !== false;
+        }
+        if ($contaTexto === 'nao_fiscal') {
+            return true; // sem contas cadastradas: "Conta 2" é a do PIX não fiscal
+        }
+        return false;
+    }
+
     /** Coloca o comprovante na fila (chamado ao anexar). Não faz nada se o envio estiver desligado. */
     public static function enfileirar(VendaComprovante $c, string $legenda): void
     {

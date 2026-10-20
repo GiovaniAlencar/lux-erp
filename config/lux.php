@@ -52,5 +52,7 @@ return [
         'key' => env('EVOLUTION_KEY', ''),
         'instancia' => env('EVOLUTION_INSTANCIA', ''),
         'grupo_comprovantes' => env('WHATSAPP_GRUPO_COMPROVANTES', ''), // ex.: 120363000000000000@g.us
+        // só manda comprovantes pagos nesta conta (parte do nome, ex.: "Orion"). Vazio = todas.
+        'conta_comprovantes' => env('WHATSAPP_COMPROVANTES_CONTA', 'Orion'),
     ],
 ];
