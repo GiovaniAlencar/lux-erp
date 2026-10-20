@@ -43,4 +43,14 @@ return [
     'instagram' => env('LUX_INSTAGRAM', 'luxperfumesdistribuidora'),
     // desliga o envio de e-mails da fila sem parar o resto (NOTIFICACOES_EMAIL=false)
     'notificacoes_email' => (bool) env('NOTIFICACOES_EMAIL', true),
+
+    // WhatsApp (Evolution API v2) — envia os comprovantes de venda para um grupo.
+    // Tudo vazio = desligado. O número da instância precisa estar dentro do grupo.
+    // Para achar o ID do grupo: php artisan lux:whatsapp-grupos "LUX COMPROVANTES"
+    'evolution' => [
+        'url' => rtrim((string) env('EVOLUTION_URL', ''), '/'),
+        'key' => env('EVOLUTION_KEY', ''),
+        'instancia' => env('EVOLUTION_INSTANCIA', ''),
+        'grupo_comprovantes' => env('WHATSAPP_GRUPO_COMPROVANTES', ''), // ex.: 120363000000000000@g.us
+    ],
 ];

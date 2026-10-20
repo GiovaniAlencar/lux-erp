@@ -14,6 +14,22 @@
         </div>
     </div>
 
+    @if(isset($pendencias) && $pendencias->isNotEmpty())
+    <div class="alert alert-warning d-flex gap-2 align-items-start">
+        <i class="bx bx-error fs-4"></i>
+        <div class="flex-grow-1">
+            <b>{{ $pendencias->count() }} {{ $pendencias->count() === 1 ? 'lançamento precisa' : 'lançamentos precisam' }} de atenção</b>
+            <div class="small">Comprovante excluído da venda, mas o dinheiro continua na conta. Abra o extrato e escolha <b>Desfazer</b> (estornar) ou <b>Vincular</b> a outra venda.</div>
+            <ul class="small mb-0 mt-1 ps-3">
+                @foreach($pendencias->take(8) as $pm)
+                <li>R$ {{ __moeda($pm->valor) }} · {{ optional($pm->conta)->nome }} · {{ $pm->data->format('d/m/Y') }} —
+                    <a href="{{ route('fin.extrato', ['conta_id' => $pm->conta_id, 'inicio' => $pm->data->format('Y-m-01'), 'fim' => max($pm->data->format('Y-m-t'), date('Y-m-d'))]) }}">abrir extrato</a></li>
+                @endforeach
+            </ul>
+        </div>
+    </div>
+    @endif
+
     <div class="row g-3 mb-3">
         <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><div class="small text-muted text-uppercase">Saldo total</div><div class="fs-4 fw-bold {{ $total < 0 ? 'text-danger' : '' }}">R$ {{ __moeda($total) }}</div></div></div></div>
         <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><div class="small text-muted text-uppercase">A pagar vencido</div><div class="fs-4 fw-bold {{ $aPagar['vencido'] > 0 ? 'text-danger' : '' }}">R$ {{ __moeda($aPagar['vencido']) }}</div></div></div></div>

@@ -33,6 +33,7 @@ class EnviarNotificacoes extends Command
 
         $fila = DB::table('notificacoes')
             ->where('status', 'pendente')
+            ->where('evento', 'not like', 'whatsapp\\_%') // esses vão pelo WhatsApp (whatsapp:comprovantes)
             ->where('enviar_apos', '<=', now())
             ->orderBy('id')
             ->limit(max(1, min(200, (int) $this->option('limite'))))

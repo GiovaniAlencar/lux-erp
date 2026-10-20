@@ -26,6 +26,7 @@ Ordem sugerida:
 23) 27_venda_comprovantes.sql (vendedor anexa comprovante de pagamento na venda)
 24) 28_comprovante_venda_financeiro.sql (comprovante da venda lança a entrada no extrato da conta; requer 26 e 27)
 25) 29_contas_pagar_despesa.sql (marca se a conta a pagar entra como despesa no fechamento; requer 26)
+26) 30_extrato_pendencia_comprovante.sql (comprovante excluído deixa aviso no extrato para estornar ou vincular a outra venda; requer 26 e 28)
 
 Deploy completo (SQL + lista de arquivos FTP): ver DEPLOY_JUN2026.txt
 

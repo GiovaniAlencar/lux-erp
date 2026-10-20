@@ -50,7 +50,8 @@ class FinLuxController extends Controller
             ->first();
         $categorias = CategoriaConta::where('empresa_id', $request->empresa_id)->orderBy('nome')->get();
 
-        return view('financeiro.contas', compact('contas', 'saldos', 'total', 'aPagar', 'mes', 'categorias'));
+        $pendencias = self::pendencias($request->empresa_id);
+        return view('financeiro.contas', compact('pendencias', 'contas', 'saldos', 'total', 'aPagar', 'mes', 'categorias'));
     }
 
     public function salvarConta(Request $request)
@@ -167,6 +168,64 @@ class FinLuxController extends Controller
         $m = FinMovimento::where('empresa_id', $request->empresa_id)->findOrFail((int) $id);
         Financeiro::estornar($m);
         return back()->with('flash_sucesso', 'Lançamento desfeito.' . ($m->conta_pagar_id ? ' O valor voltou a ficar em aberto na conta a pagar.' : ''));
+    }
+
+    /** Lançamentos com aviso (ex.: comprovante excluído da venda) — mostrados em Contas e saldos. */
+    public static function pendencias($empresaId)
+    {
+        if (!\App\Http\Controllers\VendaComprovanteController::temPendencia()) {
+            return collect();
+        }
+        return FinMovimento::with('conta:id,nome')->where('empresa_id', $empresaId)->whereNotNull('pendencia_em')
+            ->orderBy('pendencia_em')->limit(50)->get();
+    }
+
+    /**
+     * Entrada que perdeu o comprovante (excluído da venda): liga a outra venda.
+     * Cria o comprovante na nova venda com o mesmo arquivo, dá baixa lá e tira o aviso.
+     */
+    public function vincularVenda(Request $request, $id)
+    {
+        $this->exigeAdm();
+        $request->validate(['venda_id' => 'required|integer|min:1'], ['venda_id.required' => 'Informe o número do pedido.']);
+        $m = FinMovimento::where('empresa_id', $request->empresa_id)->findOrFail((int) $id);
+        if ($m->tipo !== 'entrada') {
+            return back()->with('flash_erro', 'Só entradas podem ser ligadas a uma venda.');
+        }
+        $v = \App\Models\Venda::with('cliente:id,razao_social')->where('empresa_id', $request->empresa_id)->find((int) $request->venda_id);
+        if (!$v) {
+            return back()->with('flash_erro', 'Pedido #' . (int) $request->venda_id . ' não encontrado.');
+        }
+        $total = \App\Http\Controllers\VendaComprovanteController::totalVenda($v);
+        $ja = (float) \App\Models\VendaComprovante::where('empresa_id', $v->empresa_id)->where('venda_id', $v->id)->sum('valor');
+        if ($ja + (float) $m->valor > $total + 0.009) {
+            return back()->with('flash_erro', 'O pedido #' . $v->id . ' já tem R$ ' . __moeda($ja) . ' comprovado de R$ ' . __moeda($total)
+                . ': os R$ ' . __moeda($m->valor) . ' passariam do total.');
+        }
+        $antes = $m->venda_id;
+        \Illuminate\Support\Facades\DB::transaction(function () use ($m, $v, $antes) {
+            \App\Models\VendaComprovante::create([
+                'empresa_id' => $v->empresa_id,
+                'venda_id' => $v->id,
+                'usuario_id' => (int) (session('user_logged')['id'] ?? 0) ?: null,
+                'arquivo' => $m->comprovante ?: '',
+                'nome_original' => 'comprovante-extrato-' . $m->id,
+                'fin_conta_id' => $m->conta_id,
+                'fin_movimento_id' => $m->id,
+                'valor' => $m->valor,
+                'data_pagamento' => $m->data,
+                'observacao' => 'Vinculado pelo extrato' . ($antes ? ' (era do pedido #' . $antes . ')' : ''),
+            ]);
+            $cliente = optional($v->cliente)->razao_social;
+            $m->venda_id = $v->id;
+            $m->descricao = mb_substr('Recebimento venda #' . $v->id . ($cliente ? ' · ' . $cliente : ''), 0, 255);
+            $m->pendencia = null;
+            $m->pendencia_em = null;
+            $m->save();
+            \App\Http\Controllers\VendaComprovanteController::recalcularStatusVenda($v);
+            \App\Services\RecebimentoVenda::sincronizar($v);
+        });
+        return back()->with('flash_sucesso', 'Entrada de R$ ' . __moeda($m->valor) . ' ligada ao pedido #' . $v->id . '.');
     }
 
     /** Abre o comprovante (arquivo privado, só para usuários da mesma empresa). */

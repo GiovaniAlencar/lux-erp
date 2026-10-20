@@ -349,7 +349,7 @@
         if (!del) return;
         var id = del.getAttribute('data-id');
         var perguntar = (typeof swal === 'function')
-            ? swal({ title: 'Excluir comprovante?', text: 'O arquivo será apagado.', icon: 'warning', buttons: ['Cancelar', 'Excluir'], dangerMode: true })
+            ? swal({ title: 'Excluir comprovante?', text: 'Se ele lançou dinheiro no extrato, a entrada continua lá com um aviso para o financeiro estornar ou vincular a outra venda.', icon: 'warning', buttons: ['Cancelar', 'Excluir'], dangerMode: true })
             : Promise.resolve(confirm('Excluir este comprovante?'));
         perguntar.then(function (ok) { if (ok) excluir(id); });
     });

@@ -600,6 +600,7 @@ Route::middleware([
         Route::post('/lancar', 'FinLuxController@lancar')->name('fin.lancar');
         Route::post('/transferir', 'FinLuxController@transferir')->name('fin.transferir');
         Route::post('/movimento/{id}/estornar', 'FinLuxController@estornar')->name('fin.estornar');
+        Route::post('/movimento/{id}/vincular-venda', 'FinLuxController@vincularVenda')->name('fin.vincular-venda');
         Route::get('/movimento/{id}/comprovante', 'FinLuxController@comprovante')->name('fin.comprovante');
     });
 

@@ -11,10 +11,10 @@ class FinMovimento extends Model
 
     protected $fillable = [
         'empresa_id', 'conta_id', 'tipo', 'valor', 'data', 'descricao', 'origem', 'categoria_id',
-        'forma_pagamento', 'conta_pagar_id', 'conta_receber_id', 'venda_id', 'transferencia', 'comprovante', 'usuario_id',
+        'forma_pagamento', 'conta_pagar_id', 'conta_receber_id', 'venda_id', 'transferencia', 'comprovante', 'pendencia', 'pendencia_em', 'usuario_id',
     ];
 
-    protected $casts = ['valor' => 'float', 'data' => 'date'];
+    protected $casts = ['valor' => 'float', 'data' => 'date', 'pendencia_em' => 'datetime'];
 
     public const ORIGENS = [
         'pagamento' => 'Pagamento de conta',

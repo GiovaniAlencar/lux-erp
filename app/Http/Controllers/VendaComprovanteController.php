@@ -103,7 +103,7 @@ class VendaComprovanteController extends Controller
     }
 
     /** pago quando os comprovantes cobrem o total; parcial quando cobrem parte. */
-    private function recalcularStatus(Venda $v): void
+    public static function recalcularStatusVenda(Venda $v): void
     {
         if (($v->status_pagamento ?? '') === 'estornado') {
             return;
@@ -115,6 +115,19 @@ class VendaComprovanteController extends Controller
             Venda::whereKey($v->id)->update(['status_pagamento' => $novo]);
             $v->status_pagamento = $novo;
         }
+    }
+
+    /** Texto que vai junto com o comprovante no grupo do WhatsApp: só o número do pedido. */
+    private function legendaWhatsapp(Venda $v, VendaComprovante $c, ?FinConta $conta): string
+    {
+        return 'Pedido #' . $v->id;
+    }
+
+    /** SQL 30 aplicado? (comprovante excluído vira pendência no extrato em vez de apagar a entrada) */
+    public static function temPendencia(): bool
+    {
+        static $ok = null;
+        return $ok ??= Schema::hasColumn('fin_movimentos', 'pendencia');
     }
 
     private function auditar(Venda $v, string $acao, string $texto): void
@@ -231,7 +244,7 @@ class VendaComprovanteController extends Controller
                     $c->save();
                 }
 
-                $this->recalcularStatus($v);
+                self::recalcularStatusVenda($v);
                 \App\Services\RecebimentoVenda::sincronizar($v);
                 $this->auditar($v, 'comprovante_anexado', 'Comprovante anexado'
                     . ($valor ? ': R$ ' . __moeda($valor) : '')
@@ -241,6 +254,16 @@ class VendaComprovanteController extends Controller
         } catch (\Throwable $e) {
             Storage::disk('local')->delete($caminho);
             throw $e;
+        }
+
+        // manda para o grupo do WhatsApp (fila; não atrasa o vendedor nem quebra se a Evolution cair)
+        try {
+            $c = VendaComprovante::where('venda_id', $v->id)->where('arquivo', $caminho)->first();
+            if ($c) {
+                \App\Console\Commands\EnviarWhatsappComprovantes::enfileirar($c, $this->legendaWhatsapp($v->fresh(['cliente:id,razao_social']), $c, $finConta));
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Comprovante para o WhatsApp não entrou na fila: ' . $e->getMessage());
         }
 
         return response()->json($this->payload($v->fresh(['cliente:id,razao_social'])));
@@ -269,18 +292,31 @@ class VendaComprovanteController extends Controller
             return response()->json(['message' => 'Só o administrador (ou quem anexou, no mesmo dia) pode excluir este comprovante.'], 403);
         }
         $arquivo = $c->arquivo;
-        DB::transaction(function () use ($c, $v) {
-            // tira também a entrada do extrato que esse comprovante gerou
+        $manterArquivo = false;
+        DB::transaction(function () use ($c, $v, &$manterArquivo) {
             if ($this->integraFinanceiro() && $c->fin_movimento_id) {
-                FinMovimento::where('empresa_id', $c->empresa_id)->whereKey($c->fin_movimento_id)->delete();
+                $mov = FinMovimento::where('empresa_id', $c->empresa_id)->find($c->fin_movimento_id);
+                if ($mov && self::temPendencia()) {
+                    // o dinheiro entrou de verdade: a entrada fica no extrato com um aviso para o financeiro
+                    $quem = optional(\App\Models\Usuario::find($this->usuarioId()))->nome ?: 'alguém';
+                    $mov->pendencia = mb_substr('Comprovante excluído da venda #' . $v->id . ' por ' . $quem . ' em ' . now()->format('d/m/Y H:i')
+                        . '. Estorne da conta ou vincule a outra venda.', 0, 255);
+                    $mov->pendencia_em = now();
+                    $mov->save();
+                    $manterArquivo = true; // o extrato continua mostrando o comprovante
+                } elseif ($mov) {
+                    $mov->delete(); // sem o SQL 30: comportamento antigo
+                }
             }
             $valor = $c->valor;
             $c->delete();
-            $this->recalcularStatus($v);
+            self::recalcularStatusVenda($v);
             \App\Services\RecebimentoVenda::sincronizar($v, true);
             $this->auditar($v, 'comprovante_excluido', 'Comprovante excluído' . ($valor ? ' (R$ ' . __moeda($valor) . ')' : '') . '.');
         });
-        Storage::disk('local')->delete($arquivo);
+        if (!$manterArquivo) {
+            Storage::disk('local')->delete($arquivo);
+        }
 
         return response()->json($this->payload($v));
     }

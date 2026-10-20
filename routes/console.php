@@ -35,3 +35,32 @@ Artisan::command('lux:sincronizar-recebimentos {venda?}', function ($venda = nul
     }
     $this->info("Vendas acertadas: {$n}");
 })->purpose('Acerta contas a receber das vendas (restante + baixas dos comprovantes)');
+
+// Lista os grupos do número conectado na Evolution, para achar o ID do grupo dos comprovantes:
+//   php artisan lux:whatsapp-grupos "LUX COMPROVANTES"
+Artisan::command('lux:whatsapp-grupos {busca?}', function ($busca = null) {
+    if (!\App\Services\Evolution::configurada()) {
+        $this->error('Configure EVOLUTION_URL, EVOLUTION_KEY e EVOLUTION_INSTANCIA no .env (e rode php artisan optimize:clear).');
+        return 1;
+    }
+    $grupos = collect(\App\Services\Evolution::grupos())
+        ->when($busca, fn ($c) => $c->filter(fn ($g) => mb_stripos($g['nome'], $busca) !== false));
+    if ($grupos->isEmpty()) {
+        $this->warn('Nenhum grupo encontrado. O número da instância está dentro do grupo?');
+        return 1;
+    }
+    $this->table(['Nome do grupo', 'ID (use em WHATSAPP_GRUPO_COMPROVANTES)'], $grupos->map(fn ($g) => [$g['nome'], $g['id']])->all());
+    return 0;
+})->purpose('Lista os grupos do WhatsApp (Evolution) com o ID de cada um');
+
+// Manda uma mensagem de teste para o grupo dos comprovantes.
+Artisan::command('lux:whatsapp-teste', function () {
+    $g = \App\Services\Evolution::grupoComprovantes();
+    if (!$g) {
+        $this->error('Envio desligado: confira EVOLUTION_* e WHATSAPP_GRUPO_COMPROVANTES no .env.');
+        return 1;
+    }
+    \App\Services\Evolution::enviarTexto($g, '✅ Teste do ERP LUX: os comprovantes de venda vão chegar aqui.');
+    $this->info('Mensagem enviada para ' . $g);
+    return 0;
+})->purpose('Testa o envio para o grupo dos comprovantes');
