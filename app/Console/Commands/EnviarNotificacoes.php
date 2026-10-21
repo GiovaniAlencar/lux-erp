@@ -60,7 +60,21 @@ class EnviarNotificacoes extends Command
             }
 
             try {
-                Mail::to($email)->send(new NotificacaoLux($modelo));
+                $anexos = [];
+                if ($n->evento === 'nota_emitida') {
+                    $nota = \App\Models\NotaFiscal::find((int) ($dados['nota_id'] ?? 0));
+                    if (!$nota || $nota->status !== 'autorizada') {
+                        $this->finalizar($n, 'ignorado', 'Nota não está mais autorizada', $dados);
+                        continue;
+                    }
+                    $pdf = \App\Services\AvisoCliente::danfePdf($nota);
+                    if (!$pdf) {
+                        throw new \RuntimeException('XML da nota não encontrado para gerar a DANFE.');
+                    }
+                    $anexos[] = ['conteudo' => $pdf, 'nome' => 'NF-e-' . $nota->numero . '.pdf', 'mime' => 'application/pdf'];
+                    $anexos[] = ['conteudo' => file_get_contents($nota->xmlPath()), 'nome' => $nota->chave . '.xml', 'mime' => 'application/xml'];
+                }
+                Mail::to($email)->send(new NotificacaoLux($modelo, $anexos));
                 $this->finalizar($n, 'enviado', null, $dados);
                 $enviados++;
             } catch (\Throwable $e) {

@@ -1441,6 +1441,7 @@ class VendaController extends Controller
             ->update(['status_pedido' => 'em_rota_entrega']);
 
         \App\Helpers\EcommerceSync::syncByVendaIds($ids, false);
+        \App\Services\AvisoCliente::emRota($ids);
 
         return response($content)
             ->header('Content-Type', 'text/plain; charset=utf-8')
@@ -1724,6 +1725,9 @@ class VendaController extends Controller
             $v->status_pagamento = 'pago';
         }
         $v->save();
+        if ($acao === 'confirmar_pedido') {
+            \App\Services\AvisoCliente::pedidoConfirmado($v);
+        }
 
         $rotulosWorkflow = [
             'confirmar_pedido' => 'Pedido confirmado (fluxo de separação).',

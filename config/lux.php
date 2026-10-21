@@ -54,5 +54,16 @@ return [
         'grupo_comprovantes' => env('WHATSAPP_GRUPO_COMPROVANTES', ''), // ex.: 120363000000000000@g.us
         // só manda comprovantes pagos nesta conta (parte do nome, ex.: "Orion"). Vazio = todas.
         'conta_comprovantes' => env('WHATSAPP_COMPROVANTES_CONTA', 'Orion'),
+        // instância do número do atendimento (central): avisos aos clientes. Vazio = sem WhatsApp aos clientes.
+        'instancia_clientes' => env('EVOLUTION_INSTANCIA_CLIENTES', ''),
+    ],
+
+    // Avisos automáticos aos clientes: pedido confirmado, saiu para entrega e NF-e emitida.
+    // E-mail segue NOTIFICACOES_EMAIL; WhatsApp precisa de EVOLUTION_INSTANCIA_CLIENTES.
+    // WhatsApp só sai dentro do horário (fora dele espera até a abertura).
+    'avisos_clientes' => [
+        'ativo' => (bool) env('AVISOS_CLIENTES', true),
+        'hora_inicio' => (int) env('AVISOS_HORA_INICIO', 7),
+        'hora_fim' => (int) env('AVISOS_HORA_FIM', 21),
     ],
 ];

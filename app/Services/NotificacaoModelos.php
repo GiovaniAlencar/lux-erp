@@ -111,6 +111,37 @@ class NotificacaoModelos
                     'nota' => "O link vale por {$min} minutos e só pode ser usado uma vez. Se não foi você que pediu, ignore este e-mail: sua senha continua a mesma.",
                 ];
 
+            case 'pedido_confirmado':
+                return [
+                    'assunto' => 'Pedido #' . ($d['pedido'] ?? '') . ' confirmado',
+                    'preheader' => 'Seu pedido já está sendo separado pela nossa equipe.',
+                    'titulo' => 'Pedido confirmado',
+                    'paragrafos' => [
+                        $ola,
+                        'Seu pedido foi confirmado e já está sendo separado pela nossa equipe.',
+                        'Quando ele sair para entrega, avisamos você pelo WhatsApp.',
+                    ],
+                    'detalhes' => ['Pedido' => '#' . ($d['pedido'] ?? '')],
+                    'nota' => 'Alguma dúvida? Fale com a gente pelo WhatsApp ' . config('lux.whatsapp_exibir') . '.',
+                ];
+
+            case 'nota_emitida':
+                $det = ['NF-e' => 'nº ' . ($d['numero'] ?? '')];
+                if (!empty($d['pedido'])) {
+                    $det['Pedido'] = '#' . $d['pedido'];
+                }
+                return [
+                    'assunto' => 'Nota fiscal' . (!empty($d['pedido']) ? ' do pedido #' . $d['pedido'] : ' nº ' . ($d['numero'] ?? '')),
+                    'preheader' => 'A DANFE (PDF) e o XML da sua nota estão em anexo.',
+                    'titulo' => 'Sua nota fiscal',
+                    'paragrafos' => [
+                        $ola,
+                        'A nota fiscal da sua compra foi emitida. A DANFE (PDF) e o arquivo XML estão em anexo neste e-mail.',
+                    ],
+                    'detalhes' => $det,
+                    'nota' => 'Guarde o XML: ele é o documento fiscal oficial da compra.',
+                ];
+
             case 'teste':
                 return [
                     'assunto' => 'Teste de e-mail da LUX Perfumes',
@@ -136,6 +167,12 @@ class NotificacaoModelos
             'pedido_recebido' => 'Pedido recebido',
             'produto_disponivel' => 'Avise-me: produto chegou',
             'senha_recuperar' => 'Recuperar senha',
+            'pedido_confirmado' => 'Pedido confirmado',
+            'nota_emitida' => 'NF-e emitida',
+            'whatsapp_cliente_confirmado' => 'WhatsApp: pedido confirmado',
+            'whatsapp_cliente_rota' => 'WhatsApp: saiu para entrega',
+            'whatsapp_cliente_nota' => 'WhatsApp: NF-e',
+            'whatsapp_comprovante' => 'WhatsApp: comprovante no grupo',
             'teste' => 'Teste',
         ][$evento] ?? $evento;
     }

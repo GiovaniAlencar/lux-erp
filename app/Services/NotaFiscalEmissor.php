@@ -597,6 +597,7 @@ class NotaFiscalEmissor
 
     private function marcarVendaEmitida(NotaFiscal $nota): void
     {
+        \App\Services\AvisoCliente::notaAutorizada($nota); // e-mail com DANFE+XML e WhatsApp com a DANFE
         if (!$nota->venda_id) {
             return;
         }

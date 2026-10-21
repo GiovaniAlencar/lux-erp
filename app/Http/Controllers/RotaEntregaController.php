@@ -252,6 +252,7 @@ class RotaEntregaController extends Controller
                     ->where('status_pedido', '!=', 'cancelada')
                     ->update(['status_pedido' => 'em_rota_entrega']);
                 EcommerceSync::syncByVendaIds($vendas->pluck('id')->all(), false);
+                DB::afterCommit(fn () => \App\Services\AvisoCliente::emRota($vendas->pluck('id')->all()));
             }
 
             return $criados;
@@ -388,6 +389,7 @@ class RotaEntregaController extends Controller
                     ->where('status_pedido', '!=', 'cancelada')
                     ->update(['status_pedido' => 'em_rota_entrega']);
                 EcommerceSync::syncByVendaIds($vendaIds, false);
+                DB::afterCommit(fn () => \App\Services\AvisoCliente::emRota($vendaIds));
             }
         });
 

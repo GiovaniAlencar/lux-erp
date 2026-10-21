@@ -30,9 +30,19 @@ class Evolution
             ->acceptJson()->timeout(60)->connectTimeout(10);
     }
 
-    private static function url(string $caminho): string
+    /** @param string|null $instancia null = instância dos comprovantes (EVOLUTION_INSTANCIA) */
+    private static function url(string $caminho, ?string $instancia = null): string
     {
-        return config('lux.evolution.url') . $caminho . '/' . rawurlencode((string) config('lux.evolution.instancia'));
+        $inst = $instancia ?: (string) config('lux.evolution.instancia');
+        return config('lux.evolution.url') . $caminho . '/' . rawurlencode($inst);
+    }
+
+    /** Instância que fala com os clientes (número do atendimento). null = avisos por WhatsApp desligados. */
+    public static function instanciaClientes(): ?string
+    {
+        $c = config('lux.evolution');
+        $i = trim((string) ($c['instancia_clientes'] ?? ''));
+        return (!empty($c['url']) && !empty($c['key']) && $i !== '') ? $i : null;
     }
 
     /** Lista os grupos do número conectado: [['id' => '...@g.us', 'nome' => '...'], ...] */
@@ -70,10 +80,26 @@ class Evolution
         }
     }
 
-    /** Mensagem só de texto. */
-    public static function enviarTexto(string $destino, string $texto): void
+    /** Manda um documento gerado na hora (ex.: DANFE em PDF). Lança exceção se falhar. */
+    public static function enviarDocumento(string $destino, string $conteudo, string $mime, string $nomeArquivo, string $legenda = '', ?string $instancia = null): void
     {
-        $r = self::http()->post(self::url('/message/sendText'), ['number' => $destino, 'text' => $texto]);
+        $r = self::http()->post(self::url('/message/sendMedia', $instancia), [
+            'number' => $destino,
+            'mediatype' => 'document',
+            'mimetype' => $mime,
+            'caption' => $legenda,
+            'media' => base64_encode($conteudo),
+            'fileName' => $nomeArquivo,
+        ]);
+        if (!$r->successful()) {
+            throw new \RuntimeException('Evolution respondeu ' . $r->status() . ': ' . mb_substr($r->body(), 0, 300));
+        }
+    }
+
+    /** Mensagem só de texto. */
+    public static function enviarTexto(string $destino, string $texto, ?string $instancia = null): void
+    {
+        $r = self::http()->post(self::url('/message/sendText', $instancia), ['number' => $destino, 'text' => $texto]);
         if (!$r->successful()) {
             throw new \RuntimeException('Evolution respondeu ' . $r->status() . ': ' . mb_substr($r->body(), 0, 300));
         }

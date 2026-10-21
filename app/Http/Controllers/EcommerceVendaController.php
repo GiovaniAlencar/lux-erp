@@ -283,6 +283,7 @@ class EcommerceVendaController extends Controller
                 $msgSucesso .= ' ' . $itensRemovidos->count() . ' item(ns) indisponível(is) foram removidos e não entraram na venda.';
             }
             session()->flash('flash_sucesso', $msgSucesso);
+            \App\Services\AvisoCliente::pedidoConfirmado($venda);
 
             $avisos = $this->avisosConta2;
             $temFiscal = ItemVenda::where('venda_id', $venda->id)->where('qtd_fiscal', '>', 0)->exists();
