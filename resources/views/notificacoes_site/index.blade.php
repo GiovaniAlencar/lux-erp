@@ -1,16 +1,23 @@
-@extends('default.layout',['title' => 'Notificações do Site'])
+@extends('default.layout',['title' => 'Notificações'])
 @section('content')
 @php
 	$cores = ['pendente' => 'warning text-dark', 'enviado' => 'success', 'erro' => 'danger', 'ignorado' => 'secondary'];
-	$modelos = ['cadastro_recebido', 'cadastro_aprovado', 'pedido_recebido', 'produto_disponivel', 'senha_recuperar'];
+	$modelos = ['cadastro_recebido', 'cadastro_aprovado', 'pedido_recebido', 'produto_disponivel', 'senha_recuperar', 'pedido_confirmado', 'nota_emitida'];
+	$fone = function ($t) {
+		$d = preg_replace('/\D+/', '', (string) $t);
+		if (str_starts_with($d, '55') && strlen($d) >= 12) { $d = substr($d, 2); }
+		if (strlen($d) === 11) { return '(' . substr($d, 0, 2) . ') ' . substr($d, 2, 5) . '-' . substr($d, 7); }
+		if (strlen($d) === 10) { return '(' . substr($d, 0, 2) . ') ' . substr($d, 2, 4) . '-' . substr($d, 6); }
+		return $t;
+	};
 @endphp
 <div class="page-content">
 	<div class="card">
 		<div class="card-body p-4">
 			<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
 				<div>
-					<h6 class="mb-1 text-uppercase">Notificações do site</h6>
-					<p class="small text-muted mb-0">E-mails automáticos para os clientes do site. Saem sozinhos a cada minuto; se falhar, o sistema tenta de novo.</p>
+					<h6 class="mb-1 text-uppercase">Notificações</h6>
+					<p class="small text-muted mb-0">E-mails e WhatsApp automáticos para os clientes. Saem sozinhos a cada minuto; se falhar, o sistema tenta de novo.</p>
 				</div>
 				<form method="post" action="{{ route('notificacoes-site.teste') }}" class="d-flex gap-2">
 					@csrf
@@ -57,8 +64,8 @@
 					</select>
 				</div>
 				<div class="col-md-4">
-					<label class="form-label small">E-mail</label>
-					<input type="text" name="busca" value="{{ request('busca') }}" class="form-control form-control-sm" placeholder="Buscar por e-mail">
+					<label class="form-label small">Buscar</label>
+					<input type="text" name="busca" value="{{ request('busca') }}" class="form-control form-control-sm" placeholder="Cliente, e-mail, telefone ou nº do pedido">
 				</div>
 				<div class="col-md-2">
 					<button class="btn btn-sm btn-outline-primary w-100"><i class="bx bx-search"></i> Filtrar</button>
@@ -84,7 +91,31 @@
 							<td class="text-muted">{{ $n->id }}</td>
 							<td class="text-nowrap">{{ \Carbon\Carbon::parse($n->created_at)->format('d/m/Y H:i') }}</td>
 							<td>{{ \App\Services\NotificacaoModelos::rotulo($n->evento) }}</td>
-							<td>{{ $n->email ?: '—' }}</td>
+							<td>
+								@php
+									$dd = json_decode((string) $n->dados, true) ?: [];
+									$vendaId = str_starts_with((string) $n->origem, 'venda#') ? (int) substr($n->origem, 6) : (int) (is_numeric($dd['pedido'] ?? null) ? $dd['pedido'] : 0);
+								@endphp
+								@if($n->cliente_nome)
+									<div class="fw-semibold">{{ $n->cliente_nome }}</div>
+								@endif
+								<div class="small text-muted">
+									@if($n->telefone && !str_ends_with((string) $n->telefone, '@g.us'))
+										<i class="bx bxl-whatsapp text-success"></i> {{ $fone($n->telefone) }}
+									@elseif(str_ends_with((string) $n->telefone, '@g.us'))
+										<i class="bx bxl-whatsapp text-success"></i> grupo de comprovantes
+									@endif
+									@if($n->email)
+										<i class="bx bx-envelope"></i> {{ $n->email }}
+									@endif
+									@if(!$n->telefone && !$n->email) — @endif
+								</div>
+								@if($vendaId)
+									<a href="{{ route('vendas.show', $vendaId) }}" class="small">Pedido #{{ $vendaId }}</a>
+								@elseif(!empty($dd['numero']))
+									<span class="small text-muted">NF-e {{ $dd['numero'] }}</span>
+								@endif
+							</td>
 							<td>
 								<span class="badge bg-{{ $cores[$n->status] ?? 'secondary' }}">{{ ucfirst($n->status) }}</span>
 								@if($n->status === 'pendente' && $n->tentativas > 0)

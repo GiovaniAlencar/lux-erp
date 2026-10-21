@@ -18,18 +18,32 @@ class NotificacaoController extends Controller
             session()->flash('flash_erro', 'Rode o SQL 21 (tabela notificacoes) para usar esta tela.');
             return redirect('/');
         }
-        $q = DB::table('notificacoes');
+        $q = DB::table('notificacoes as n')
+            ->leftJoin('clientes as c', 'c.id', '=', 'n.cliente_id')
+            ->select('n.*', 'c.razao_social as cliente_nome');
         if ($request->filled('status')) {
-            $q->where('status', $request->status);
+            $q->where('n.status', $request->status);
         }
         if ($request->filled('evento')) {
-            $q->where('evento', $request->evento);
+            $q->where('n.evento', $request->evento);
         }
         if ($request->filled('busca')) {
-            $b = '%' . str_replace(['%', '_'], ['\%', '\_'], trim($request->busca)) . '%';
-            $q->where('email', 'like', $b);
+            $termo = trim($request->busca);
+            $b = '%' . str_replace(['%', '_'], ['\%', '\_'], $termo) . '%';
+            $digitos = preg_replace('/\D+/', '', $termo);
+            $q->where(function ($w) use ($b, $digitos, $termo) {
+                $w->where('n.email', 'like', $b)->orWhere('c.razao_social', 'like', $b);
+                if (strlen($digitos) >= 4) {
+                    $w->orWhere('n.telefone', 'like', '%' . $digitos . '%');
+                }
+                if (ctype_digit(ltrim($termo, '#'))) { // número do pedido
+                    $num = ltrim($termo, '#');
+                    $w->orWhere('n.origem', 'venda#' . $num)
+                        ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(n.dados, '$.pedido')) = ?", [$num]);
+                }
+            });
         }
-        $itens = $q->orderByDesc('id')->paginate(50)->withQueryString();
+        $itens = $q->orderByDesc('n.id')->paginate(50)->withQueryString();
 
         $resumo = DB::table('notificacoes')
             ->where('created_at', '>=', now()->subDays(7))
@@ -76,7 +90,7 @@ class NotificacaoController extends Controller
     public function preview($evento)
     {
         $exemplo = [
-            'nome' => 'MARIA DA SILVA', 'pedido' => 'SITE123456', 'total' => 1289.5,
+            'nome' => 'MARIA DA SILVA', 'pedido' => 'SITE123456', 'total' => 1289.5, 'numero' => '1234',
             'expira_em' => now()->addDay()->format('Y-m-d H:i:s'),
             'produto' => 'Lattafa Asad Bourbon 100ml', 'produto_id' => 595,
             'token' => str_repeat('0', 64), 'validade_minutos' => 60,
