@@ -1,3 +1,4 @@
+@php $tmBandeiras = config('lux.maquineta.bandeiras', []); @endphp
 <div class="modal fade" id="modal-taxa-maquineta" tabindex="-1" aria-hidden="true" aria-modal="true" role="dialog" style="overflow:scroll;">
 	<div class="modal-dialog modal-md">
 		<div class="modal-content">
@@ -8,29 +9,40 @@
 			<div class="modal-body row g-3">
 				<div class="col-12">
 					<label class="form-label">Valor base (total do pedido)</label>
-					<input type="tel" id="tm_valor_base" class="form-control moeda" placeholder="0,00">
+					<input type="text" inputmode="decimal" id="tm_valor_base" class="form-control lux-dinheiro" placeholder="0,00" autocomplete="off">
 					<small class="text-muted">Preenche com o total do pedido, mas você pode alterar.</small>
 				</div>
-				<div class="col-12">
+				<div class="col-md-6">
 					<label class="form-label">Bandeira</label>
 					<select id="tm_bandeira" class="form-select">
-						<option value="master_visa">Master/Visa</option>
-						<option value="hiper_elo_amex">Hiper/Elo/Amex</option>
+						@foreach($tmBandeiras as $chave => $b)
+							<option value="{{ $chave }}">{{ $b['rotulo'] }}</option>
+						@endforeach
 					</select>
 				</div>
-				<div class="col-12">
-					<label class="form-label">Parcelas</label>
+				<div class="col-md-6">
+					<label class="form-label">Pagamento</label>
 					<select id="tm_parcelas" class="form-select">
-						@for($i=1; $i<=12; $i++)
-							<option value="{{ $i }}">{{ $i }}x</option>
+						<option value="debito">Débito</option>
+						@for($i = 1; $i <= 18; $i++)
+							<option value="{{ $i }}">Crédito {{ $i }}x</option>
 						@endfor
 					</select>
-					<small class="text-muted d-block mt-1">% da maquineta: <span id="tm_percent">0,00%</span></small>
 				</div>
 				<div class="col-12">
 					<div class="alert alert-secondary mb-0">
-                        <div class="fw-bold">Total com taxa: <span id="tm_total_com_taxa">R$ 0,00</span></div>
-						<div class="fw-bold">Acréscimo sugerido: <span id="tm_acrescimo_sugerido">R$ 0,00</span></div>
+						<div class="small text-muted mb-1">Taxa da maquineta: <b id="tm_percent">0,00%</b></div>
+						<div class="fw-bold">Total com taxa: <span id="tm_total_com_taxa">R$ 0</span> <span class="fw-normal text-muted" id="tm_valor_parcela"></span></div>
+						<div class="fw-bold">Acréscimo sugerido: <span id="tm_acrescimo_sugerido">R$ 0</span></div>
+					</div>
+				</div>
+				<div class="col-12">
+					<a href="#" class="small" id="tm_ver_tabela">Ver todas as opções para este valor</a>
+					<div id="tm_tabela" class="table-responsive mt-2" style="display:none;max-height:320px;overflow:auto">
+						<table class="table table-sm table-hover mb-0 small">
+							<thead><tr><th>Pagamento</th><th class="text-end">Taxa</th><th class="text-end">Total</th><th class="text-end">Parcela</th></tr></thead>
+							<tbody></tbody>
+						</table>
 					</div>
 				</div>
 			</div>
@@ -41,3 +53,6 @@
 		</div>
 	</div>
 </div>
+<script>
+	window.TM_TAXAS = @json(collect($tmBandeiras)->map(fn ($b) => $b['taxas']));
+</script>

@@ -31,6 +31,13 @@ class FinConta extends Model
         return round($this->saldo_inicial + (float) $r, 2);
     }
 
+    /** Conta de dinheiro em espécie (tipo "Caixa" ou nome com "dinheiro"): pagamento sem comprovante. */
+    public function ehDinheiro(): bool
+    {
+        $nome = mb_strtolower((string) $this->nome);
+        return $this->tipo === 'caixa' || str_contains($nome, 'dinheiro') || str_contains($nome, 'espécie') || str_contains($nome, 'especie');
+    }
+
     public static function daEmpresa($empresaId, bool $soAtivas = true)
     {
         return static::where('empresa_id', $empresaId)

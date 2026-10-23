@@ -514,19 +514,14 @@ $(function () {
 })
 
 // ===== Taxas da maquineta (cálculo e aplicação) =====
-const TM_RATES = {
-    master_visa: {1: 4.5, 2: 5.2, 3: 5.9, 4: 6.9, 5: 7.5, 6: 7.8, 7: 8.8, 8: 9.5, 9: 9.9, 10: 10.4, 11: 12.2, 12: 12.6},
-    hiper_elo_amex: {1: 4.5, 2: 5.2, 3: 5.9, 4: 6.9, 5: 7.5, 6: 8.5, 7: 9.0, 8: 10.5, 9: 11.0, 10: 12.0, 11: 12.5, 12: 13.0}
-};
-
-function tmGetGroupFromBandeira(b) {
-    return b; // já vem como 'master_visa' ou 'hiper_elo_amex'
+// A tabela vem do config/lux.php (maquineta) pelo modal: window.TM_TAXAS = {visa_master: {debito: 2, 1: 4, ...}, ...}
+function tmGetPercent(bandeira, parcelas) {
+    const tabela = (window.TM_TAXAS || {})[bandeira] || {};
+    return parseFloat(tabela[parcelas]) || 0;
 }
 
-function tmGetPercent(bandeira, parcelas) {
-    const group = tmGetGroupFromBandeira(bandeira);
-    const rates = TM_RATES[group];
-    return rates[parcelas] || 0;
+function tmNumParcelas(parcelas) {
+    return parcelas === 'debito' ? 1 : (parseInt(parcelas) || 1);
 }
 
 function ceilToCents(v) {
@@ -547,28 +542,64 @@ function formatIntBR(v){
     }
 }
 
+function tmBruto(valorBase, p) {
+    return ceilToUnit(valorBase / (1 - (p / 100)));
+}
+
+function tmMontarTabela() {
+    const valorBase = convertMoedaToFloat($('#tm_valor_base').val() || '0');
+    const bandeira = $('#tm_bandeira').val();
+    const tabela = (window.TM_TAXAS || {})[bandeira] || {};
+    const linhas = [];
+    ['debito'].concat(Array.from({length: 18}, (_, i) => String(i + 1))).forEach((k) => {
+        const p = parseFloat(tabela[k]) || 0;
+        if (!p) return;
+        const bruto = valorBase > 0 ? tmBruto(valorBase, p) : 0;
+        const n = tmNumParcelas(k);
+        const parcela = n > 1 && bruto ? 'R$ ' + (bruto / n).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '—';
+        linhas.push('<tr data-op="' + k + '" style="cursor:pointer"><td>' + (k === 'debito' ? 'Débito' : k + 'x') + '</td><td class="text-end">' +
+            p.toFixed(2).replace('.', ',') + '%</td><td class="text-end">R$ ' + formatIntBR(bruto) + '</td><td class="text-end">' + parcela + '</td></tr>');
+    });
+    $('#tm_tabela tbody').html(linhas.join(''));
+}
+
 function tmUpdatePreview() {
     const valorBase = convertMoedaToFloat($('#tm_valor_base').val() || '0');
     const bandeira = $('#tm_bandeira').val();
-    const parcelas = parseInt($('#tm_parcelas').val() || '1');
+    const parcelas = $('#tm_parcelas').val() || '1';
+    const n = tmNumParcelas(parcelas);
     const p = tmGetPercent(bandeira, parcelas);
     $('#tm_percent').text(p.toFixed(2).replace('.', ',') + '%');
     if (valorBase > 0 && p > 0) {
-        const bruto = ceilToUnit(valorBase / (1 - (p/100)));
+        const bruto = tmBruto(valorBase, p);
         $('#tm_total_com_taxa').text('R$ ' + formatIntBR(bruto));
+        $('#tm_valor_parcela').text(n > 1 ? '(' + n + 'x de R$ ' + (bruto / n).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ')' : '');
         const acrescimoSug = bruto - total_geral; // total_geral pode ter decimais; diferença será arredondada ao aplicar
         $('#tm_acrescimo_sugerido').text('R$ ' + formatIntBR(acrescimoSug > 0 ? acrescimoSug : 0));
     } else {
         $('#tm_total_com_taxa').text('R$ 0');
+        $('#tm_valor_parcela').text('');
         $('#tm_acrescimo_sugerido').text('R$ 0');
     }
+    if ($('#tm_tabela').is(':visible')) tmMontarTabela();
 }
+
+$(document).on('click', '#tm_ver_tabela', function (e) {
+    e.preventDefault();
+    tmMontarTabela();
+    $('#tm_tabela').slideToggle(120);
+});
+
+$(document).on('click', '#tm_tabela tbody tr', function () {
+    $('#tm_parcelas').val(String($(this).data('op'))).trigger('change');
+});
 
 // Preenche o modal ao abrir com total atual
 $(document).on('shown.bs.modal', '#modal-taxa-maquineta', function(){
     $('#tm_valor_base').val(convertFloatToMoeda(total_geral));
-    $('#tm_bandeira').val('master_visa').trigger('change');
+    $('#tm_bandeira').val('visa_master').trigger('change');
     $('#tm_parcelas').val('1').trigger('change');
+    $('#tm_tabela').hide();
     setTimeout(() => tmUpdatePreview(), 100);
 });
 
@@ -580,13 +611,13 @@ $(document).on('input change', '#tm_valor_base, #tm_bandeira, #tm_parcelas', fun
 $(document).on('click', '#tm_btn_aplicar', function(){
     const valorBase = convertMoedaToFloat($('#tm_valor_base').val() || '0');
     const bandeira = $('#tm_bandeira').val();
-    const parcelas = parseInt($('#tm_parcelas').val() || '1');
-    const p = tmGetPercent(bandeira, parcelas);
+    const opcao = $('#tm_parcelas').val() || '1';
+    const parcelas = tmNumParcelas(opcao);
+    const p = tmGetPercent(bandeira, opcao);
 
-    // verificação de parcelamento máximo (limite 12 para maquineta)
-    const parcelamento_maximo = Math.min(parseInt($('#parcelamento_maximo').val() || '12'), 12);
-    if (parcelas > parcelamento_maximo) {
-        swal("Atenção", "Quantidade de parcelas excede o parcelamento máximo ("+parcelamento_maximo+").", "warning");
+    // o parcelamento é da maquineta (até 18x): não depende do "parcelamento máximo" da configuração
+    if (parcelas < 1 || parcelas > 18) {
+        swal("Atenção", "A maquineta parcela em até 18x.", "warning");
         return;
     }
 
@@ -595,7 +626,7 @@ $(document).on('click', '#tm_btn_aplicar', function(){
         return;
     }
 
-    const bruto = ceilToUnit(valorBase / (1 - (p/100)));
+    const bruto = tmBruto(valorBase, p);
     // aplica acréscimo (ajusta total_geral para igualar bruto)
     const acrescimoAtual = convertMoedaToFloat($('#inp-acrescimo').val() || '0');
     const novoAcrescimo = (bruto - (total_geral)) + acrescimoAtual;
@@ -611,10 +642,10 @@ $(document).on('click', '#tm_btn_aplicar', function(){
             $('#inp-forma_pagamento').val('personalizado').trigger('change');
 
             // define código SEFAZ da bandeira (agrupado)
-            // master_visa -> Visa (01), hiper_elo_amex -> Elo (06)
+            // visa_master -> Visa (01), elo -> Elo (06), demais -> Outros (99)
             let codBandeira = '99';
-            if (bandeira === 'master_visa') codBandeira = '01';
-            else if (bandeira === 'hiper_elo_amex') codBandeira = '06';
+            if (bandeira === 'visa_master') codBandeira = '01';
+            else if (bandeira === 'elo') codBandeira = '06';
             $('#inp-bandeira_cartao').val(codBandeira);
 
             // gerar parcelas iguais via endpoint já existente

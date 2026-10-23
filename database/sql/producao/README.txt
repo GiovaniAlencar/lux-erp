@@ -27,6 +27,7 @@ Ordem sugerida:
 24) 28_comprovante_venda_financeiro.sql (comprovante da venda lança a entrada no extrato da conta; requer 26 e 27)
 25) 29_contas_pagar_despesa.sql (marca se a conta a pagar entra como despesa no fechamento; requer 26)
 26) 30_extrato_pendencia_comprovante.sql (comprovante excluído deixa aviso no extrato para estornar ou vincular a outra venda; requer 26 e 28)
+27) 31_categoria_ciclo.sql (categoria "Ciclo" para a linha nacional e move os produtos da marca; só dados, sem mudar tabelas)
 
 Deploy completo (SQL + lista de arquivos FTP): ver DEPLOY_JUN2026.txt
 

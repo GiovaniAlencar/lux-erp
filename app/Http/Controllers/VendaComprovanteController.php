@@ -84,10 +84,10 @@ class VendaComprovanteController extends Controller
             'comprovado' => $comprovado,
             'falta' => round(max(0, $total - $comprovado), 2),
             'status_pagamento' => $v->status_pagamento ?? 'pendente',
-            'contas' => $this->contasFinanceiro((int) $v->empresa_id)->map(fn ($c) => ['id' => $c->id, 'nome' => $c->nome, 'padrao' => (bool) $c->padrao])->values(),
+            'contas' => $this->contasFinanceiro((int) $v->empresa_id)->map(fn ($c) => ['id' => $c->id, 'nome' => $c->nome, 'padrao' => (bool) $c->padrao, 'dinheiro' => $c->ehDinheiro()])->values(),
             'itens' => $lista->map(fn (VendaComprovante $c) => [
                 'id' => $c->id,
-                'url' => route('vendas-comprovantes.abrir', $c->id),
+                'url' => $c->arquivo !== '' ? route('vendas-comprovantes.abrir', $c->id) : null, // dinheiro: sem arquivo
                 'nome' => $c->nome_original ?: ('comprovante-' . $c->id),
                 'pdf' => str_ends_with(strtolower($c->arquivo), '.pdf'),
                 'conta' => ($this->integraFinanceiro() && $c->finConta) ? $c->finConta->nome : VendaComprovante::nomeConta($c->conta),
@@ -154,7 +154,7 @@ class VendaComprovanteController extends Controller
     {
         $v = $this->venda($request, $id);
         $request->validate([
-            'arquivo' => 'required|file|mimes:' . self::EXTENSOES . '|max:' . self::MAX_KB,
+            'arquivo' => 'nullable|file|mimes:' . self::EXTENSOES . '|max:' . self::MAX_KB, // obrigatório, menos em dinheiro (abaixo)
             'conta' => 'nullable|string|max:20',
             'valor' => 'nullable|string|max:20',
             'data_pagamento' => 'nullable|date|before_or_equal:today',
@@ -192,28 +192,46 @@ class VendaComprovanteController extends Controller
         }
         $data = $request->input('data_pagamento') ?: date('Y-m-d');
 
+        // pagamento em dinheiro (conta "Caixa"/"Dinheiro"): não tem comprovante, mas o valor é obrigatório
         $arq = $request->file('arquivo');
-        $ext = strtolower($arq->getClientOriginalExtension() ?: $arq->extension());
-        if ($ext === 'jpeg') {
-            $ext = 'jpg';
+        $dinheiro = $finConta ? $finConta->ehDinheiro() : false;
+        if (!$arq) {
+            if (!$dinheiro) {
+                return response()->json(['message' => 'Escolha a foto ou o PDF do comprovante.'], 422);
+            }
+            if ($valor === null) {
+                return response()->json(['message' => 'Informe o valor recebido em dinheiro.'], 422);
+            }
         }
-        if (!in_array($ext, explode(',', self::EXTENSOES), true)) {
-            return response()->json(['message' => 'Envie uma imagem (JPG, PNG, WEBP) ou PDF.'], 422);
-        }
-        $caminho = $arq->storeAs(
-            'comprovantes-vendas/' . (int) $v->empresa_id . '/' . date('Y-m'),
-            Str::uuid() . '.' . $ext,
-            'local'
-        );
 
+        $caminho = ''; // sem arquivo = pagamento em dinheiro
+        if ($arq) {
+            $ext = strtolower($arq->getClientOriginalExtension() ?: $arq->extension());
+            if ($ext === 'jpeg') {
+                $ext = 'jpg';
+            }
+            if (!in_array($ext, explode(',', self::EXTENSOES), true)) {
+                return response()->json(['message' => 'Envie uma imagem (JPG, PNG, WEBP) ou PDF.'], 422);
+            }
+            $caminho = $arq->storeAs(
+                'comprovantes-vendas/' . (int) $v->empresa_id . '/' . date('Y-m'),
+                Str::uuid() . '.' . $ext,
+                'local'
+            );
+        }
+
+        $novoId = null;
         try {
-            DB::transaction(function () use ($v, $request, $arq, $caminho, $finConta, $contaTexto, $valor, $data) {
+            DB::transaction(function () use ($v, $request, $arq, $caminho, $finConta, $contaTexto, $valor, $data, &$novoId) {
+                $nomeOriginal = $arq
+                    ? (mb_substr(preg_replace('/[^\pL\pN ._()-]+/u', '', $arq->getClientOriginalName()) ?: '', 0, 150) ?: null)
+                    : 'Pagamento em dinheiro';
                 $dados = [
                     'empresa_id' => $v->empresa_id,
                     'venda_id' => $v->id,
                     'usuario_id' => $this->usuarioId() ?: null,
                     'arquivo' => $caminho,
-                    'nome_original' => mb_substr(preg_replace('/[^\pL\pN ._()-]+/u', '', $arq->getClientOriginalName()) ?: '', 0, 150) ?: null,
+                    'nome_original' => $nomeOriginal,
                     'conta' => $finConta ? null : $contaTexto,
                     'valor' => $valor,
                     'observacao' => $request->input('observacao') ? mb_substr(strip_tags($request->input('observacao')), 0, 255) : null,
@@ -223,6 +241,7 @@ class VendaComprovanteController extends Controller
                     $dados['data_pagamento'] = $data;
                 }
                 $c = VendaComprovante::create($dados);
+                $novoId = $c->id;
 
                 // valor + conta do Financeiro → entrada no extrato
                 if ($finConta && $valor) {
@@ -237,7 +256,7 @@ class VendaComprovanteController extends Controller
                         'origem' => 'recebimento',
                         'forma_pagamento' => $v->tipo_pagamento ? mb_substr((string) Venda::getTipo($v->tipo_pagamento), 0, 30) : null,
                         'venda_id' => $v->id,
-                        'comprovante' => $caminho,
+                        'comprovante' => $caminho !== '' ? $caminho : null,
                         'usuario_id' => $this->usuarioId() ?: null,
                     ]);
                     $c->fin_movimento_id = $mov->id;
@@ -246,21 +265,23 @@ class VendaComprovanteController extends Controller
 
                 self::recalcularStatusVenda($v);
                 \App\Services\RecebimentoVenda::sincronizar($v);
-                $this->auditar($v, 'comprovante_anexado', 'Comprovante anexado'
+                $this->auditar($v, 'comprovante_anexado', ($caminho !== '' ? 'Comprovante anexado' : 'Pagamento em dinheiro registrado')
                     . ($valor ? ': R$ ' . __moeda($valor) : '')
                     . ($finConta ? ' em ' . $finConta->nome . ' (lançado no financeiro)' : ($contaTexto ? ' · ' . VendaComprovante::nomeConta($contaTexto) : ''))
                     . '.');
             });
         } catch (\Throwable $e) {
-            Storage::disk('local')->delete($caminho);
+            if ($caminho !== '') {
+                Storage::disk('local')->delete($caminho);
+            }
             throw $e;
         }
 
         // manda para o grupo do WhatsApp (fila; não atrasa o vendedor nem quebra se a Evolution cair)
         try {
-            $c = VendaComprovante::where('venda_id', $v->id)->where('arquivo', $caminho)->first();
-            // só os da conta configurada (ex.: Conta 2 / Orion)
-            if ($c && \App\Console\Commands\EnviarWhatsappComprovantes::contaVaiProGrupo($finConta, $c->conta)) {
+            $c = $novoId ? VendaComprovante::find($novoId) : null;
+            // só os da conta configurada (ex.: Conta 2 / Orion), e só quando tem arquivo
+            if ($c && $c->arquivo !== '' && \App\Console\Commands\EnviarWhatsappComprovantes::contaVaiProGrupo($finConta, $c->conta)) {
                 \App\Console\Commands\EnviarWhatsappComprovantes::enfileirar($c, $this->legendaWhatsapp($v->fresh(['cliente:id,razao_social']), $c, $finConta));
             }
         } catch (\Throwable $e) {
@@ -274,7 +295,7 @@ class VendaComprovanteController extends Controller
     public function abrir(Request $request, $cid)
     {
         $c = VendaComprovante::where('empresa_id', $request->empresa_id)->findOrFail((int) $cid);
-        if (!Storage::disk('local')->exists($c->arquivo)) {
+        if ($c->arquivo === '' || !Storage::disk('local')->exists($c->arquivo)) {
             abort(404);
         }
         $ext = pathinfo($c->arquivo, PATHINFO_EXTENSION);
@@ -315,7 +336,7 @@ class VendaComprovanteController extends Controller
             \App\Services\RecebimentoVenda::sincronizar($v, true);
             $this->auditar($v, 'comprovante_excluido', 'Comprovante excluído' . ($valor ? ' (R$ ' . __moeda($valor) . ')' : '') . '.');
         });
-        if (!$manterArquivo) {
+        if (!$manterArquivo && $arquivo !== '') {
             Storage::disk('local')->delete($arquivo);
         }
 

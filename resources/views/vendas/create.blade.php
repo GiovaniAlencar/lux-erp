@@ -205,7 +205,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <script type="text/javascript" src="/js/client.js"></script>
 <script>window.PRECO_CATEGORIA_CONFIG = @json($precoCategoriaJs ?? []);</script>
 <script type="text/javascript" src="/js/tabela_preco_venda.js?v=20261013"></script>
-<script type="text/javascript" src="/js/vendas.js?v=20261017"></script>
+<script type="text/javascript" src="/js/vendas.js?v=20261023"></script>
 <script type="text/javascript" src="/js/product.js"></script>
 <script type="text/javascript" src="/js/transportadora.js"></script>
 @if(session()->hasOldInput() && old('produto_id') && is_array(old('produto_id')))

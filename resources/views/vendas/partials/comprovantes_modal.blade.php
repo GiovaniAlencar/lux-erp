@@ -22,6 +22,7 @@
 
                 <form class="lux-comp-form" enctype="multipart/form-data" novalidate>
                     <h6 class="lux-comp-form-tit">Anexar comprovante</h6>
+                    <div class="lux-comp-dinheiro alert alert-success py-2 small d-none"><i class="bi bi-cash-coin"></i> <b>Pagamento em dinheiro:</b> não precisa de comprovante. Só confira o valor recebido e clique em <b>Registrar</b>.</div>
                     <label class="lux-comp-drop">
                         <input type="file" name="arquivo" accept="image/jpeg,image/png,image/webp,application/pdf" required>
                         <i class="bi bi-cloud-arrow-up" aria-hidden="true"></i>
@@ -147,11 +148,15 @@
             lista.innerHTML = '<div class="lux-comp-vazio">Nenhum comprovante anexado ainda.</div>';
         } else {
             lista.innerHTML = d.itens.map(function (c) {
-                var thumb = c.pdf
-                    ? '<i class="bi bi-file-earmark-pdf" aria-hidden="true"></i>'
-                    : '<img src="' + esc(c.url) + '" alt="" loading="lazy">';
+                var thumb = !c.url
+                    ? '<i class="bi bi-cash-coin" aria-hidden="true"></i>'
+                    : (c.pdf
+                        ? '<i class="bi bi-file-earmark-pdf" aria-hidden="true"></i>'
+                        : '<img src="' + esc(c.url) + '" alt="" loading="lazy">');
                 return '<div class="lux-comp-item">' +
-                    '<a class="lux-comp-thumb" href="' + esc(c.url) + '" target="_blank" rel="noopener" title="Abrir comprovante">' + thumb + '</a>' +
+                    (c.url
+                        ? '<a class="lux-comp-thumb" href="' + esc(c.url) + '" target="_blank" rel="noopener" title="Abrir comprovante">' + thumb + '</a>'
+                        : '<span class="lux-comp-thumb" title="Pagamento em dinheiro (sem comprovante)">' + thumb + '</span>') +
                     '<div class="lux-comp-info">' +
                         '<div class="lux-comp-l1">' + (c.valor ? moeda(c.valor) + ' · ' : '') + esc(c.conta) + (c.no_financeiro ? '<span class="lux-comp-fin" title="Lançado como recebimento no extrato"><i class="bi bi-check2"></i> no financeiro</span>' : '') + '</div>' +
                         (c.data ? '<div class="lux-comp-l2">pago em ' + esc(c.data) + '</div>' : '') +
@@ -159,7 +164,7 @@
                         '<div class="lux-comp-l2">' + esc(c.por || '—') + ' · ' + esc(c.em || '') + '</div>' +
                     '</div>' +
                     '<div class="lux-comp-acoes">' +
-                        '<a class="btn btn-sm btn-outline-secondary" href="' + esc(c.url) + '" target="_blank" rel="noopener" title="Abrir"><i class="bi bi-box-arrow-up-right"></i></a>' +
+                        (c.url ? '<a class="btn btn-sm btn-outline-secondary" href="' + esc(c.url) + '" target="_blank" rel="noopener" title="Abrir"><i class="bi bi-box-arrow-up-right"></i></a>' : '') +
                         (c.pode_excluir ? '<button type="button" class="btn btn-sm btn-outline-danger lux-comp-del" data-id="' + c.id + '" title="Excluir"><i class="bi bi-trash"></i></button>' : '') +
                     '</div>' +
                 '</div>';
@@ -172,7 +177,7 @@
             var atual = selConta.value;
             if (!selConta.dataset.fin) {
                 selConta.innerHTML = d.contas.map(function (c) {
-                    return '<option value="' + c.id + '"' + (c.padrao ? ' data-padrao="1"' : '') + '>' + esc(c.nome) + '</option>';
+                    return '<option value="' + c.id + '"' + (c.padrao ? ' data-padrao="1"' : '') + (c.dinheiro ? ' data-dinheiro="1"' : '') + '>' + esc(c.nome) + '</option>';
                 }).join('');
                 selConta.dataset.fin = '1';
                 var pad = selConta.querySelector('[data-padrao]');
@@ -182,6 +187,7 @@
             }
             modalEl.querySelector('.lux-comp-dica').classList.remove('d-none');
         }
+        ajustarDinheiro();
         var inpValor = form.querySelector('[name=valor]');
         // só sugere o "falta" se a pessoa ainda não digitou um valor
         if (!inpValor.dataset.editado) inpValor.value = d.falta > 0.009 ? num(d.falta) : '';
@@ -204,6 +210,23 @@
             .catch(function (e) { modalEl.querySelector('.lux-comp-lista').innerHTML = '<div class="lux-comp-vazio text-danger">' + esc(e.message) + '</div>'; });
     }
 
+    // conta de dinheiro: some a área do arquivo e o botão vira "Registrar"
+    function ehDinheiro() {
+        var sel = form.querySelector('[name=conta]');
+        var op = sel && sel.options[sel.selectedIndex];
+        return !!(op && op.getAttribute('data-dinheiro'));
+    }
+    function ajustarDinheiro() {
+        var din = ehDinheiro();
+        form.querySelector('.lux-comp-drop').classList.toggle('d-none', din);
+        modalEl.querySelector('.lux-comp-dinheiro').classList.toggle('d-none', !din);
+        form.querySelector('.lux-comp-form-tit').textContent = din ? 'Registrar pagamento em dinheiro' : 'Anexar comprovante';
+        if (!btnEnviar.disabled) {
+            btnEnviar.innerHTML = din ? '<i class="bi bi-cash-coin"></i> Registrar' : '<i class="bi bi-paperclip"></i> Anexar';
+        }
+    }
+    form.querySelector('[name=conta]').addEventListener('change', ajustarDinheiro);
+
     function limparForm() {
         var contaEscolhida = form.querySelector('[name=conta]').value;
         form.reset();
@@ -213,6 +236,7 @@
         drop.classList.remove('has-file');
         dropTxt.innerHTML = dropTxtOriginal;
         mostrarErro('');
+        ajustarDinheiro();
     }
 
     document.addEventListener('click', function (e) {
@@ -312,16 +336,20 @@
 
     form.addEventListener('submit', function (e) {
         e.preventDefault();
-        var f = form.querySelector('[name=arquivo]').files[0];
-        if (!f) { mostrarErro('Escolha a foto ou o PDF do comprovante.'); return; }
+        var din = ehDinheiro();
+        var f = din ? null : form.querySelector('[name=arquivo]').files[0];
+        if (!f && !din) { mostrarErro('Escolha a foto ou o PDF do comprovante.'); return; }
+        if (din && !(parseFloat(String(form.querySelector('[name=valor]').value).replace(/\./g, '').replace(',', '.')) > 0)) {
+            mostrarErro('Informe o valor recebido em dinheiro.'); return;
+        }
         mostrarErro('');
         btnEnviar.disabled = true;
         var htmlBtn = btnEnviar.innerHTML;
         btnEnviar.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Enviando…';
-        prepararArquivo(f).then(function (arq) {
-            if (arq.size > 8 * 1024 * 1024) throw new Error('O arquivo pode ter no máximo 8 MB.');
+        (f ? prepararArquivo(f) : Promise.resolve(null)).then(function (arq) {
+            if (arq && arq.size > 8 * 1024 * 1024) throw new Error('O arquivo pode ter no máximo 8 MB.');
             var fd = new FormData(form);
-            fd.set('arquivo', arq, arq.name);
+            if (arq) fd.set('arquivo', arq, arq.name); else fd.delete('arquivo');
             return fetch(URL_LISTAR + encodeURIComponent(vendaAtual), {
             method: 'POST', body: fd, credentials: 'same-origin',
             headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' }
@@ -338,10 +366,10 @@
                 limparForm();
                 modalEl.dataset.mudou = '1';
                 render(x.j);
-                if (window.toastr) toastr.success('Comprovante anexado.');
+                if (window.toastr) toastr.success(din ? 'Pagamento em dinheiro registrado.' : 'Comprovante anexado.');
             })
             .catch(function (err) { mostrarErro(err.message); })
-            .finally(function () { btnEnviar.disabled = false; btnEnviar.innerHTML = htmlBtn; });
+            .finally(function () { btnEnviar.disabled = false; btnEnviar.innerHTML = htmlBtn; ajustarDinheiro(); });
     });
 
     modalEl.addEventListener('click', function (e) {
