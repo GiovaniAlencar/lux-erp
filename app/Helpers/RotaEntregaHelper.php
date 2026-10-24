@@ -100,7 +100,7 @@ class RotaEntregaHelper
 
         return [
             'venda_id' => $v->id,
-            'cliente_nome' => trim($c->razao_social ?? ''),
+            'cliente_nome' => trim($c->nome_exibicao), // nome fantasia quando tem
             'telefone' => $telefone,
             'rua' => trim($c->rua ?? ''),
             'numero' => trim($c->numero ?? ''),

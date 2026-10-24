@@ -17,6 +17,21 @@ class Cliente extends Model
 	];
 
 
+	/** Nome que a equipe conhece: nome fantasia quando existe, senão a razão social. */
+	public function getNomeExibicaoAttribute(): string
+	{
+		$f = trim((string) $this->nome_fantasia);
+		return $f !== '' ? $f : (string) $this->razao_social;
+	}
+
+	/** Razão social para mostrar embaixo do nome (só quando é diferente dele). */
+	public function getRazaoSecundariaAttribute(): ?string
+	{
+		$f = trim((string) $this->nome_fantasia);
+		$r = trim((string) $this->razao_social);
+		return ($f !== '' && mb_strtolower($f) !== mb_strtolower($r)) ? $r : null;
+	}
+
 	public function getImgAttribute()
 	{
 		if(!$this->imagem){

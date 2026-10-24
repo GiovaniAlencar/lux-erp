@@ -10,10 +10,19 @@ use Illuminate\Http\Request;
 class ClienteController extends Controller
 {
     public function pesquisa(Request $request){
+        // busca pelo nome que a equipe usa (nome fantasia) ou pela razão social / CPF-CNPJ
+        $termo = (string) $request->pesquisa;
+        $digitos = preg_replace('/\D+/', '', $termo);
         $data = Cliente::
         orderBy('razao_social', 'desc')
         ->where('empresa_id', $request->empresa_id)
-        ->where('razao_social', 'like', "%$request->pesquisa%")
+        ->where(function ($q) use ($termo, $digitos) {
+            $q->where('razao_social', 'like', "%$termo%")
+                ->orWhere('nome_fantasia', 'like', "%$termo%");
+            if (strlen($digitos) >= 4) {
+                $q->orWhereRaw("REPLACE(REPLACE(REPLACE(cpf_cnpj, '.', ''), '-', ''), '/', '') LIKE ?", ["%$digitos%"]);
+            }
+        })
         ->get();
         return response()->json($data, 200);
 

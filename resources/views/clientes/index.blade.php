@@ -65,7 +65,10 @@
 									<tr>
 										<td><img class="img-round" src="{{ $item->img }}"></td>
 										<td>{{ $item->id }}</td>
-										<td>{{ $item->razao_social }}</td>
+										<td>
+											{{ $item->nome_exibicao }}
+											@if($item->razao_secundaria)<div class="small text-muted">{{ $item->razao_secundaria }}</div>@endif
+										</td>
 										<td>{{ $item->cpf_cnpj }}</td>
 										<td>{{ __data_pt($item->created_at) }}</td>
 										<td>{{ $item->celular }}</td>

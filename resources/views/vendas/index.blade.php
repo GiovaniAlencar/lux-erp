@@ -481,8 +481,8 @@
                                         <span class="lux-copy-nome font-normal @if($vendasUiDark) text-gray-300 @else text-gray-600 @endif"
                                             role="button"
                                             tabindex="0"
-                                            data-copy="{{ e($item->cliente->razao_social) }}"
-                                            title="Clique para copiar o nome (texto simples, ideal para Excel)">{{ $item->cliente->razao_social }}</span>
+                                            data-copy="{{ e($item->cliente->nome_exibicao) }}"
+                                            title="{{ $item->cliente->razao_secundaria ? 'Razão social: ' . $item->cliente->razao_secundaria . ' · ' : '' }}Clique para copiar o nome (texto simples, ideal para Excel)">{{ $item->cliente->nome_exibicao }}</span>
                                     </div>
                                     <div class="text-[11px] leading-snug mt-0.5 @if($vendasUiDark) text-gray-500 @else text-gray-500 @endif" title="Vendedor">
                                         <i data-lucide="user" class="size-3 inline -mt-0.5"></i> {{ optional($item->usuario)->nome ?? '—' }}

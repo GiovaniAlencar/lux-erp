@@ -38,10 +38,10 @@
                             @if(session()->hasOldInput() && old('cliente_id'))
                             @php $clienteOld = \App\Models\Cliente::find(old('cliente_id')); @endphp
                             @if($clienteOld)
-                            <option value="{{ $clienteOld->id }}" selected>{{ $clienteOld->razao_social }} - {{ $clienteOld->cpf_cnpj }}</option>
+                            <option value="{{ $clienteOld->id }}" selected>{{ $clienteOld->nome_exibicao }}{{ $clienteOld->razao_secundaria ? ' (' . $clienteOld->razao_secundaria . ')' : '' }} - {{ $clienteOld->cpf_cnpj }}</option>
                             @endif
                             @else
-                            <option value="{{ $item->cliente_id }}">{{ $item->cliente->razao_social }} - {{ $item->cliente->cpf_cnpj }}</option>
+                            <option value="{{ $item->cliente_id }}">{{ $item->cliente->nome_exibicao }}{{ $item->cliente->razao_secundaria ? ' (' . $item->cliente->razao_secundaria . ')' : '' }} - {{ $item->cliente->cpf_cnpj }}</option>
                             @endif
                         </select>
                         <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#modal-cliente">
@@ -63,7 +63,7 @@
                             @if(old('cliente_id'))
                             @php $clienteOld = \App\Models\Cliente::find(old('cliente_id')); @endphp
                             @if($clienteOld)
-                            <option value="{{ $clienteOld->id }}" selected>{{ $clienteOld->razao_social }} - {{ $clienteOld->cpf_cnpj }}</option>
+                            <option value="{{ $clienteOld->id }}" selected>{{ $clienteOld->nome_exibicao }}{{ $clienteOld->razao_secundaria ? ' (' . $clienteOld->razao_secundaria . ')' : '' }} - {{ $clienteOld->cpf_cnpj }}</option>
                             @endif
                             @endif
                         </select>

@@ -33,7 +33,8 @@ class ClienteController extends Controller
         $data = Cliente::where('empresa_id', request()->empresa_id)
         ->when(!empty($request->razao_social), function ($q) use ($request) {
             return  $q->where(function ($quer) use ($request) {
-                return $quer->where('razao_social', 'LIKE', "%$request->razao_social%");
+                return $quer->where('razao_social', 'LIKE', "%$request->razao_social%")
+                    ->orWhere('nome_fantasia', 'LIKE', "%$request->razao_social%");
             });
         })
         ->when(!empty($request->cpf_cnpj), function ($q) use ($request) {

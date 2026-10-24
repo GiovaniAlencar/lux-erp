@@ -169,7 +169,7 @@ class VendaController extends Controller
             });
 
         $data = (clone $queryVendas)
-            ->with(['itens', 'cliente:id,razao_social,cpf_cnpj', 'usuario:id,nome'])
+            ->with(['itens', 'cliente:id,razao_social,nome_fantasia,cpf_cnpj', 'usuario:id,nome'])
             ->orderBy('created_at', 'desc')
             ->paginate(env("PAGINACAO"));
 
@@ -1384,7 +1384,7 @@ class VendaController extends Controller
         foreach ($vendas as $v) {
             $c = $v->cliente;
             if (!$c) continue;
-            $nome = trim($c->razao_social ?? '');
+            $nome = trim($c->nome_exibicao); // nome que o motoboy/cliente reconhece (fantasia)
             $fone = trim($c->celular ?? ($c->telefone ?? ''));
             $rua = trim($c->rua ?? '');
             $numero = trim($c->numero ?? '');

@@ -391,7 +391,7 @@
 <script type="text/javascript" src="/js/jquery.mask.min.js"></script>
 <script src="/assets/js/select2.min.js"></script>
 <script src="/assets/js/app.js"></script>
-<script src="/js/main.js?v=20261017"></script>
+<script src="/js/main.js?v=20261024"></script>
 <script src="/js/lux-dinheiro.js?v=2"></script>
 <script src="/js/theme.js"></script>
 <script>

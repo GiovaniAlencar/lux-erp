@@ -121,8 +121,22 @@ $("#btn-consulta-cnpj").click(() => {
                 $('#inp-contribuinte').val(1).change()
             }
 
-            $("#inp-razao_social").val(data.razao_social);
-            $("#inp-nome_fantasia").val(data.estabelecimento.nome_fantasia);
+            // A razão social vem da Receita. O nome que a equipe já usava (ex.: "SS Perfume Store")
+            // não se perde: se o nome fantasia estiver vazio, ele vai para lá.
+            const norm = (t) => String(t || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            const razaoAntiga = ($("#inp-razao_social").val() || '').trim();
+            const fantasiaAtual = ($("#inp-nome_fantasia").val() || '').trim();
+            const razaoNova = data.razao_social || '';
+            const fantasiaReceita = ((data.estabelecimento && data.estabelecimento.nome_fantasia) || '').trim();
+            $("#inp-razao_social").val(razaoNova);
+            if (fantasiaAtual === '') {
+                if (razaoAntiga !== '' && norm(razaoAntiga) !== norm(razaoNova)) {
+                    $("#inp-nome_fantasia").val(razaoAntiga);
+                    if (window.toastr) toastr.info('O nome "' + razaoAntiga + '" foi mantido como Nome fantasia.');
+                } else if (fantasiaReceita !== '') {
+                    $("#inp-nome_fantasia").val(fantasiaReceita);
+                }
+            }
 
             let cep = data.estabelecimento.cep.replace(/[^\d]+/g, '');
             cep = cep.substring(0, 5) + '-' + cep.substring(5, 9)
@@ -343,7 +357,10 @@ $("#inp-fornecedor_id").select2({
                 var o = {};
                 o.id = v.id;
 
-                o.text = v.razao_social + " - " + v.cpf_cnpj;
+                const fant = String(v.nome_fantasia || '').trim();
+                o.text = (fant && fant.toLowerCase() !== String(v.razao_social || '').trim().toLowerCase()
+                    ? fant + " (" + v.razao_social + ")"
+                    : v.razao_social) + " - " + v.cpf_cnpj;
                 o.value = v.id;
                 results.push(o);
             });
@@ -380,7 +397,10 @@ $("#inp-cliente_id").select2({
                 var o = {};
                 o.id = v.id;
 
-                o.text = v.razao_social + " - " + v.cpf_cnpj;
+                const fant = String(v.nome_fantasia || '').trim();
+                o.text = (fant && fant.toLowerCase() !== String(v.razao_social || '').trim().toLowerCase()
+                    ? fant + " (" + v.razao_social + ")"
+                    : v.razao_social) + " - " + v.cpf_cnpj;
                 o.value = v.id;
                 results.push(o);
             });

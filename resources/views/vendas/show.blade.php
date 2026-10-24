@@ -272,7 +272,8 @@
                     <div class="vd-card-h"><h2><i class="bi bi-person-vcard"></i> Cliente</h2></div>
                     <div class="vd-card-b">
                         @if($cli)
-                            <p class="vd-cli-nome">{{ $cli->razao_social }}</p>
+                            <p class="vd-cli-nome">{{ $cli->nome_exibicao }}</p>
+                            @if($cli->razao_secundaria)<div class="vd-cli-doc">{{ $cli->razao_secundaria }}</div>@endif
                             <div class="vd-cli-doc">
                                 {{ $cli->cpf_cnpj ?: 'Sem CPF/CNPJ' }}
                                 @if($cli->cidade) · {{ $cli->cidade->nome }}/{{ $cli->cidade->uf }} @endif
