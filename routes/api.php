@@ -570,4 +570,8 @@ Route::group(['prefix' => '/controle_comandas'], function(){
 
 });
 
-
+// Central de atendimento (WhatsApp): dados do cliente no painel lateral. Protegido por X-Central-Token.
+Route::middleware('throttle:120,1')->group(function () {
+    Route::get('/central/cliente', 'API\\CentralAtendimentoController@cliente');
+    Route::get('/central/clientes', 'API\\CentralAtendimentoController@buscar');
+});

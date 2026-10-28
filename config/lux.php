@@ -67,6 +67,15 @@ return [
         'hora_fim' => (int) env('AVISOS_HORA_FIM', 21),
     ],
 
+    // Central de atendimento (WhatsApp): o painel do cliente busca cadastro, endereços e pedidos aqui.
+    // Token longo e secreto (o mesmo vai no .env da central em ERP_API_TOKEN). Vazio = desligado.
+    'central_atendimento' => [
+        'token' => env('CENTRAL_ATENDIMENTO_TOKEN', ''),
+        'empresa_id' => (int) env('CENTRAL_ATENDIMENTO_EMPRESA', 1),
+        // endereço do ERP usado nos links "abrir no ERP" (padrão: APP_URL)
+        'erp_url' => env('CENTRAL_ATENDIMENTO_ERP_URL', ''),
+    ],
+
     // Taxas da maquineta (%) repassadas ao cliente — maquininha da Conta 2.
     // Usadas no "Calcular taxas da maquineta" das vendas. Mesma tabela do simulador do site.
     'maquineta' => [
