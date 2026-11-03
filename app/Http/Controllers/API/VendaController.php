@@ -69,8 +69,9 @@ class VendaController extends Controller
             $quantidade = $request->quantidade;
 
             $tipo = Venda::getTipo($tipo_pagamento);
+            $naEntrega = (string) $request->na_entrega === '0' ? '0' : '1';
 
-            return view('vendas.partials.row_payment_purchase', compact('tipo', 'tipo_pagamento', 'valor_integral', 'data_vencimento', 'quantidade'));
+            return view('vendas.partials.row_payment_purchase', compact('tipo', 'tipo_pagamento', 'valor_integral', 'data_vencimento', 'quantidade', 'naEntrega'));
         }catch(\Exception $e){
             return response()->json($e->getMessage(), 401);
         }
@@ -86,7 +87,8 @@ class VendaController extends Controller
             $valorParcela = $totalGeral / $parcelas;
 
             $tipo = Venda::getTipo($tipoPagamento);
-            return view('vendas.partials.row_payment_personalizado', compact('tipo', 'tipoPagamento', 'valorParcela', 'parcelas', 'intervalo', 'totalGeral'));
+            $naEntrega = (string) $request->na_entrega === '0' ? '0' : '1';
+            return view('vendas.partials.row_payment_personalizado', compact('tipo', 'tipoPagamento', 'valorParcela', 'parcelas', 'intervalo', 'totalGeral', 'naEntrega'));
         }catch(\Exception $e){
             return response()->json($e->getMessage(), 401);
         }

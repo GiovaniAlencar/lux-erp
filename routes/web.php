@@ -45,6 +45,14 @@ Route::get('/error', function () {
 Route::get('/entrega/{token}', 'EntregaConfirmacaoController@show')->name('entrega.confirmar');
 Route::post('/entrega/{token}', 'EntregaConfirmacaoController@submit')->name('entrega.confirmar.submit');
 
+// App do motoboy: link único da rota (sem login; token de 40 caracteres)
+Route::group(['prefix' => 'motoboy', 'middleware' => 'throttle:90,1'], function () {
+    Route::get('/{token}', 'MotoboyController@show')->name('motoboy.rota');
+    Route::get('/{token}/dados', 'MotoboyController@dados')->name('motoboy.dados');
+    Route::post('/{token}/itens/{item}/entregar', 'MotoboyController@entregar')->whereNumber('item')->name('motoboy.entregar');
+    Route::post('/{token}/itens/{item}/ocorrencia', 'MotoboyController@ocorrencia')->whereNumber('item')->name('motoboy.ocorrencia');
+});
+
 Route::group(['prefix' => 'migrador'], function () {
     Route::get('/{empresa_id}', 'MigradorController@index');
     Route::post('/', 'MigradorController@save');
@@ -593,8 +601,29 @@ Route::middleware([
 
     Route::resource('categoria-conta', 'CategoriaContaController');
 
+    Route::group(['prefix' => 'pedidos-compra', 'as' => 'compra-pedidos.'], function () {
+        Route::get('/', 'CompraPedidoController@index')->name('index');
+        Route::get('/novo', 'CompraPedidoController@create')->name('create');
+        Route::post('/', 'CompraPedidoController@store')->name('store');
+        Route::get('/produtos', 'CompraPedidoController@produtos')->name('produtos');
+        Route::get('/{id}', 'CompraPedidoController@show')->whereNumber('id')->name('show');
+        Route::get('/{id}/editar', 'CompraPedidoController@edit')->whereNumber('id')->name('edit');
+        Route::put('/{id}', 'CompraPedidoController@update')->whereNumber('id')->name('update');
+        Route::delete('/{id}', 'CompraPedidoController@destroy')->whereNumber('id')->name('destroy');
+        Route::post('/{id}/cancelar', 'CompraPedidoController@cancelar')->whereNumber('id')->name('cancelar');
+        Route::post('/{id}/custos', 'CompraPedidoController@custo')->whereNumber('id')->name('custo');
+        Route::delete('/{id}/custos/{custo}', 'CompraPedidoController@excluirCusto')->whereNumber('id')->name('custo.excluir');
+        Route::get('/{id}/entrada', 'CompraPedidoController@entradaForm')->whereNumber('id')->name('entrada.form');
+        Route::post('/{id}/entrada', 'CompraPedidoController@entrada')->whereNumber('id')->name('entrada');
+        Route::post('/{id}/pendencias', 'CompraPedidoController@pendencia')->whereNumber('id')->name('pendencia');
+        Route::post('/{id}/pendencias/{pend}/resolver', 'CompraPedidoController@resolverPendencia')->whereNumber('id')->name('pendencia.resolver');
+    });
+
     Route::group(['prefix' => 'financeiro-lux'], function () {
         Route::get('/contas', 'FinLuxController@contas')->name('fin.contas');
+        Route::get('/fechamento', 'FechamentoController@index')->name('fin.fechamento');
+        Route::post('/fechamento', 'FechamentoController@salvar')->name('fin.fechamento.salvar');
+        Route::post('/fechamento/reabrir', 'FechamentoController@reabrir')->name('fin.fechamento.reabrir');
         Route::post('/contas', 'FinLuxController@salvarConta')->name('fin.contas.salvar');
         Route::get('/extrato', 'FinLuxController@extrato')->name('fin.extrato');
         Route::post('/lancar', 'FinLuxController@lancar')->name('fin.lancar');
@@ -910,6 +939,7 @@ Route::middleware([
     Route::group(['prefix' => 'vendas-comprovantes'], function () {
         Route::get('/venda/{id}', 'VendaComprovanteController@listar')->name('vendas-comprovantes.listar');
         Route::post('/venda/{id}', 'VendaComprovanteController@salvar')->name('vendas-comprovantes.salvar');
+        Route::post('/venda/{id}/usar-saldo', 'VendaComprovanteController@usarSaldo')->name('vendas-comprovantes.usar-saldo');
         Route::get('/{cid}/arquivo', 'VendaComprovanteController@abrir')->name('vendas-comprovantes.abrir');
         Route::delete('/{cid}', 'VendaComprovanteController@excluir')->name('vendas-comprovantes.excluir');
     });

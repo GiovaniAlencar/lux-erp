@@ -596,7 +596,11 @@ $(document).on('click', '#tm_tabela tbody tr', function () {
 
 // Preenche o modal ao abrir com total atual
 $(document).on('shown.bs.modal', '#modal-taxa-maquineta', function(){
-    $('#tm_valor_base').val(convertFloatToMoeda(total_geral));
+    // pagamento misto: sugere só o que falta (sem contar as parcelas de maquineta já aplicadas, que serão refeitas)
+    const outros = luxSomaPagamentos(':not(.tm-row)');
+    const baseSemTaxa = total_geral - (window.tmAcrescimoAplicado || 0);
+    const restante = Math.round((baseSemTaxa - outros) * 100) / 100;
+    $('#tm_valor_base').val(convertFloatToMoeda(outros > 0 && restante > 0 ? restante : baseSemTaxa));
     $('#tm_bandeira').val('visa_master').trigger('change');
     $('#tm_parcelas').val('1').trigger('change');
     $('#tm_tabela').hide();
@@ -627,11 +631,16 @@ $(document).on('click', '#tm_btn_aplicar', function(){
     }
 
     const bruto = tmBruto(valorBase, p);
-    // aplica acréscimo (ajusta total_geral para igualar bruto)
-    const acrescimoAtual = convertMoedaToFloat($('#inp-acrescimo').val() || '0');
-    const novoAcrescimo = (bruto - (total_geral)) + acrescimoAtual;
+    // pagamento misto: as outras linhas (PIX, dinheiro...) ficam; as parcelas de maquineta anteriores são refeitas
+    $('.table-payment tbody tr.tm-row').remove();
+    const outros = luxSomaPagamentos('');
+    const acrescimoAtual = convertMoedaToFloat($('#inp-acrescimo').val() || '0') - (window.tmAcrescimoAplicado || 0);
+    const totalSemTaxa = total_geral - (window.tmAcrescimoAplicado || 0);
+    // acréscimo = taxa da maquineta sobre a parte no cartão (venda passa a valer outros + bruto)
+    const novoAcrescimo = (outros + bruto - totalSemTaxa) + acrescimoAtual;
     // garante inteiro e arredonda para cima
     const novoAcrescimoInt = novoAcrescimo > 0 ? ceilToUnit(novoAcrescimo) : 0;
+    window.tmAcrescimoAplicado = Math.max(0, novoAcrescimoInt - acrescimoAtual);
     $('#inp-acrescimo').val(convertFloatToMoeda(novoAcrescimoInt));
     setTimeout(() => {
         calcTotal(); // recalcula total_geral
@@ -653,11 +662,12 @@ $(document).on('click', '#tm_btn_aplicar', function(){
                 total_geral: bruto, // inteiro sem casas decimais
                 parcelas: parcelas,
                 intervalo: 30,
-                tipo_pagamento: '03'
+                tipo_pagamento: '03',
+                na_entrega: luxNaEntrega()
             };
             $.get(path_url + 'api/vendas/linhaParcelaVendaPersonalizado', data)
                 .done((success) => {
-                    $('.table-payment tbody').html(success);
+                    $('.table-payment tbody').append($(success).filter('tr').addClass('tm-row'));
                     calcTotalPayment();
                     $('#modal-taxa-maquineta').modal('hide');
                     swal("Sucesso", "Taxas aplicadas e parcelas geradas!", "success");
@@ -725,21 +735,21 @@ function formasPagamento() {
         + "-" + (now.getDate() < 10 ? "0" + now.getDate() : now.getDate())
         $('#inp-qtd_parcelas').val('1')
         $('#inp-data_vencimento').val(data)
-        $('#inp-valor_integral').val(convertFloatToMoeda(total_geral))
+        $('#inp-valor_integral').val(convertFloatToMoeda(luxRestante()))
     } else if (fp == '30_dias') {
         var date = new Date(new Date().setDate(new Date().getDate() + 30));
         let data = date.getFullYear() + "-" + ((date.getMonth() + 1) < 10 ? "0" + (date.getMonth() + 1) : (date.getMonth() + 1))
         + "-" + (date.getDate() < 10 ? "0" + date.getDate() : date.getDate())
         $('#inp-qtd_parcelas').val('1')
         $('#inp-data_vencimento').val(data)
-        $('#inp-valor_integral').val(convertFloatToMoeda(total_geral))
+        $('#inp-valor_integral').val(convertFloatToMoeda(luxRestante()))
     } else if (fp == 'personalizado') {
         $("#inp-qtd_parcelas").removeAttr("disabled");
         $("#inp-data_vencimento").removeAttr("disabled");
         $("#inp-valor_integral").removeAttr("disabled");
         $('#inp-qtd_parcelas').val('1')
-        $('#inp-data_vencimento').val('')
-        $('#inp-valor_integral').val(convertFloatToMoeda(total_geral))
+        $('#inp-data_vencimento').val(luxHoje())
+        $('#inp-valor_integral').val(convertFloatToMoeda(luxRestante()))
     } else {
 
     }
@@ -766,29 +776,55 @@ $('.btn-add-payment').click(() => {
 
     let v = convertMoedaToFloat(valor_integral)
     total_geral = parseFloat(total_geral.toFixed(2))
-    if ((v + total_payment) <= total_geral) {
-        if (vencimento && valor_integral && tipo_pagamento) {
+    const jaLancado = luxSomaPagamentos('')
+    if ((v + jaLancado) <= total_geral + 0.009) {
+        if (vencimento && v > 0 && tipo_pagamento) {
             let dataRequest = {
                 tipo_pagamento: tipo_pagamento,
                 data_vencimento: vencimento,
                 valor_integral: valor_integral,
+                na_entrega: luxNaEntrega(),
             }
 
             $.get(path_url + "api/vendas/linhaParcelaVenda", dataRequest)
             .done((e) => {
                 $('.table-payment tbody').append(e)
                 calcTotalPayment()
+                // já deixa o próximo pagamento pronto com o que falta
+                setTimeout(() => { $('#inp-valor_integral').val(convertFloatToMoeda(luxRestante())) }, 150)
             })
             .fail((e) => {
                 console.log(e)
             })
+        } else if (!vencimento) {
+            swal("Atenção", "Informe a data de vencimento do pagamento.", "warning")
         } else {
-            swal("Atenção", "Informe corretamente os campos para continuar!", "warning")
+            swal("Atenção", "Informe o tipo e o valor do pagamento.", "warning")
         }
     } else {
-        swal("Atenção", "A soma das parcelas ultrapassa o valor total da venda", "warning")
+        swal("Atenção", "A soma dos pagamentos ultrapassa o total da venda. Falta só R$ " + convertFloatToMoeda(luxRestante()) + ".", "warning")
     }
 })
+
+// --- pagamento misto (PIX + cartão + dinheiro) ---
+function luxSomaPagamentos(filtro) {
+    let s = 0
+    $('.table-payment tbody tr' + (filtro || '')).find('.valor_integral').each(function () {
+        s += convertMoedaToFloat($(this).val())
+    })
+    return Math.round(s * 100) / 100
+}
+function luxRestante() {
+    const r = Math.round((parseFloat(total_geral.toFixed(2)) - luxSomaPagamentos('')) * 100) / 100
+    return r > 0 ? r : 0
+}
+function luxHoje() {
+    const d = new Date()
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+}
+function luxNaEntrega() {
+    return $('#inp-recebimento').length && $('#inp-recebimento').val() === '0' ? '0' : '1'
+}
 
 var total_payment = 0
 function calcTotalPayment() {
@@ -967,7 +1003,8 @@ $('.btn-pag_personalizado').click(() => {
         total_geral: total_geral,
         parcelas: parcelas,
         intervalo: intervalo,
-        tipo_pagamento: tipo_pagamento
+        tipo_pagamento: tipo_pagamento,
+        na_entrega: luxNaEntrega()
     }
     $.get(path_url + 'api/vendas/linhaParcelaVendaPersonalizado', data)
     .done((success) => {

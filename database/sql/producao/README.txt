@@ -28,6 +28,11 @@ Ordem sugerida:
 25) 29_contas_pagar_despesa.sql (marca se a conta a pagar entra como despesa no fechamento; requer 26)
 26) 30_extrato_pendencia_comprovante.sql (comprovante excluído deixa aviso no extrato para estornar ou vincular a outra venda; requer 26 e 28)
 27) 31_categoria_ciclo.sql (categoria "Ciclo" para a linha nacional e move os produtos da marca; só dados, sem mudar tabelas)
+28) 32_motoboy_recebimentos_saldo.sql (app do motoboy: link da rota, foto do comprovante, coordenadas; saldo do cliente; requer 26, 27 e 28)
+29) 33_pedidos_compra.sql (pedidos de compra em dólar/real: pagamentos com cotação, fretes, entrada e pendências; requer 26)
+30) 34_fechamento_mes.sql (fechamento do mês: divisão entre sócios, retiradas e a foto do fechamento; requer 26, 29 e 33)
+31) 35_recebimento_na_entrega.sql (cada pagamento da venda marca se já foi pago ou se o motoboy cobra na entrega)
+32) 36_pedido_compra_agente.sql (% do agente no pedido de compra, antes da conversão do dólar; requer 33)
 
 Deploy completo (SQL + lista de arquivos FTP): ver DEPLOY_JUN2026.txt
 

@@ -605,11 +605,13 @@ class DfeController extends Controller
 					'codigo_siad' => ''
 				]);
 
-				$stockMove->pluStock(
-					(int) $request->produto_id[$i],
-					__convert_value_bd($request->quantidade[$i] * $produto->conversao_unitaria),
-					__convert_value_bd($request->valor_unitario[$i])
-				);
+				// atualiza o custo médio (antes só somava estoque e o custo ficava velho)
+				$conv = (float) $produto->conversao_unitaria > 0 ? (float) $produto->conversao_unitaria : 1;
+				$qtdEstoque = (float) __convert_value_bd($request->quantidade[$i]) * $conv;
+				$custoUn = (float) __convert_value_bd($request->valor_unitario[$i]) / $conv;
+				\App\Services\CustoMedio::aplicar($produto, $qtdEstoque, $custoUn);
+				$produto->save();
+				$stockMove->pluStock($produto->id, $qtdEstoque, (float) $produto->valor_compra);
 			}
 
 			$dfe->compra_id = $result->id;

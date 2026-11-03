@@ -649,7 +649,7 @@
                     {{env('SITE_SUPORTE')}}
                 </td>
                 <td class="text-right">
-                    @if($config->logo != "")
+                    @if($config->logo != "" && file_exists(public_path('uploads/configEmitente/').$config->logo))
                     <img src="{{'data:image/png;base64,' . base64_encode(file_get_contents(@public_path('uploads/configEmitente/').$config->logo))}}" alt="logo" class="mr-3">
                     @else
                     <img src="{{'data:image/png;base64,' . base64_encode(file_get_contents(@public_path('imgs/slym.png')))}}" alt="Logo" class="mr-3">

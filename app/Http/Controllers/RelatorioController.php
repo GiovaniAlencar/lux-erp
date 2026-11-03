@@ -1292,65 +1292,55 @@ class RelatorioController extends Controller
 	public function estoqueProduto(Request $request)
 	{
 		$ordem = $request->ordem;
-		$total_resultados = $request->nr_resultados ?? 1000;
-		$categoria = $request->categoria;
-		$produtos = Produto::select(\DB::raw('produtos.id, produtos.referencia, produtos.str_grade, produtos.valor_compra, produtos.nome, produtos.unidade_venda, estoques.quantidade, produtos.valor_venda, produtos.percentual_lucro'))
-		->leftJoin('estoques', 'produtos.id', '=', 'estoques.produto_id')
-		->when(!empty($categoria_id), function ($query) use ($categoria) {
-			return $query->where('produtos.categoria_id', $categoria);
-		})
-		->limit($total_resultados)
-		->where('produtos.empresa_id', $request->empresa_id)
-		->orderBy('produtos.nome');
-		if ($request->categoria != 'todos') {
-			$produtos->where('produtos.categoria_id', $request->categoria);
-		}
+		$limite = (int) $request->nr_resultados; // vazio = todos (antes cortava em 1000 e o total saía menor)
+		$temFiscal = \Schema::hasColumn('produtos', 'estoque_fiscal');
+		$temCustoFiscal = \Schema::hasColumn('produtos', 'custo_fiscal');
+
+		// Soma todas as linhas de estoque do produto (antes pegava só a primeira linha encontrada).
+		$estoque = \DB::table('estoques')->selectRaw('produto_id, SUM(quantidade) as quantidade')->groupBy('produto_id');
+		$ultimaCompra = \DB::table('item_compras')->selectRaw('produto_id, MAX(created_at) as data')->groupBy('produto_id');
+
+		$produtos = Produto::query()
+			->leftJoinSub($estoque, 'est', 'est.produto_id', '=', 'produtos.id')
+			->leftJoinSub($ultimaCompra, 'uc', 'uc.produto_id', '=', 'produtos.id')
+			->where('produtos.empresa_id', $request->empresa_id)
+			->when($request->categoria && $request->categoria != 'todos', fn ($q) => $q->where('produtos.categoria_id', $request->categoria))
+			// inativo só aparece se ainda tiver estoque (o dinheiro está parado lá)
+			->where(fn ($q) => $q->where('produtos.inativo', 0)->orWhereNull('produtos.inativo')->orWhere('est.quantidade', '<>', 0))
+			->select('produtos.id', 'produtos.referencia', 'produtos.str_grade', 'produtos.valor_compra', 'produtos.nome', 'produtos.unidade_venda',
+				'produtos.valor_venda', 'produtos.percentual_lucro', 'produtos.inativo', \DB::raw('COALESCE(est.quantidade, 0) as quantidade'), 'uc.data as ultima_compra')
+			->when($temFiscal, fn ($q) => $q->addSelect('produtos.estoque_fiscal'))
+			->when($temCustoFiscal, fn ($q) => $q->addSelect('produtos.custo_fiscal'));
+
 		if ($ordem == 'qtd') {
-			$produtos = $produtos->orderBy('estoques.quantidade', 'desc');
+			$produtos->orderByDesc('quantidade');
+		} elseif ($ordem == 'asc') {
+			$produtos->orderBy('quantidade');
 		}
-		$produtos = $produtos->get();
-
-		$data = [];
-		$dataAdd = [];
-		foreach ($produtos as $p) {
-			$item = ItemCompra::where('produto_id', $p->id)
-			->orderBy('id', 'desc')
-			->first();
-			if ($item != null) {
-				$p->data_ultima_compra = \Carbon\Carbon::parse($item->created_at)->format('d/m/Y H:m');
-			} else {
-				$p->data_ultima_compra = '--';
-			}
-
-			if(!in_array($p->id, $dataAdd)){
-				array_push($data, $p);
-				array_push($dataAdd, $p->id);
-			}
-
+		$produtos->orderBy('produtos.nome');
+		if ($limite > 0) {
+			$produtos->limit($limite);
 		}
+		$data = $produtos->get()->each(function ($p) {
+			$p->data_ultima_compra = $p->ultima_compra ? \Carbon\Carbon::parse($p->ultima_compra)->format('d/m/Y') : '--';
+		});
 
-		// echo $produtos;
-		// die();
 		$categoria = 'Todos';
-		if ($request->categoria != 'todos') {
+		if ($request->categoria && $request->categoria != 'todos') {
 			$categoria = Categoria::findOrFail($request->categoria)->nome;
 		}
 		$p = view('relatorios/relatorio_estoque')
 		->with('ordem', $ordem == 'asc' ? 'Menos' : 'Mais')
 		->with('categoria', $categoria)
 		->with('title', 'Relatório de estoque')
+		->with('temFiscal', $temFiscal)
+		->with('limite', $limite)
 		->with('produtos', $data);
-		// return $p;
-		// if($request->excel == 0){
 		$domPdf = new Dompdf();
 		$domPdf->loadHtml($p);
 		$domPdf->setPaper("A4", "landscape");
 		$domPdf->render();
 		$domPdf->stream("Relatório de estoque.pdf", array("Attachment" => false));
-		// }else{
-		// 	$relatorioEx = new RelatorioExport($produtos);
-		// 	return Excel::download($relatorioEx, 'estoque de produtos.xlsx');
-		// }
 	}
 
 	public function comissaoVendas(Request $request)

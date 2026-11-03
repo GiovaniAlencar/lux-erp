@@ -706,7 +706,7 @@
 
 @section('js')
 <script type="text/javascript" src="/js/nf.js"></script>
-<script type="text/javascript" src="/js/vendas.js"></script>
+<script type="text/javascript" src="/js/vendas.js?v=20261103"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   const dateInputs = document.querySelectorAll('#lux-vendas-index input[type="date"]');

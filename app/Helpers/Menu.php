@@ -58,6 +58,7 @@ class Menu
 				'titulo' => 'Compras',
 				'icone' => 'bx bx-import',
 				'subs' => [
+					$item('Pedidos de compra (US$/R$)', 'compra-pedidos.index'),
 					$item('Pedido de compra', 'compraManual.index'),
 					$item('Compras', 'compras.index'),
 					$item('Cotação', 'cotacao.index'),
@@ -103,6 +104,7 @@ class Menu
 				'subs' => [
 					$item('Contas e saldos', 'fin.contas'),
 					$item('Extrato', 'fin.extrato'),
+					$item('Fechamento do mês', 'fin.fechamento'),
 					$item('Contas a pagar', 'conta-pagar.index'),
 					$item('Contas a receber', 'conta-receber.index'),
 					$item('Movimentação de caixa', 'fluxoCaixa.index'),

@@ -22,6 +22,7 @@ class FinMovimento extends Model
         'avulso' => 'Lançamento avulso',
         'transferencia' => 'Transferência',
         'ajuste' => 'Ajuste de saldo',
+        'compra' => 'Pedido de compra',
     ];
 
     public function conta()

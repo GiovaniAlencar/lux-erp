@@ -76,6 +76,24 @@ return [
         'erp_url' => env('CENTRAL_ATENDIMENTO_ERP_URL', ''),
     ],
 
+    // App do motoboy (link único por rota): em qual conta do Financeiro entra cada forma de pagamento
+    // (parte do nome da conta, sem diferenciar maiúsculas). Dinheiro vai para a conta "Caixa"/"Dinheiro".
+    'motoboy' => [
+        'conta_pix' => env('MOTOBOY_CONTA_PIX', 'Orion'),
+        'conta_cartao' => env('MOTOBOY_CONTA_CARTAO', 'Maquin'),
+    ],
+
+    // Endereço → coordenadas (OpenStreetMap / Nominatim, grátis) para ordenar as entregas.
+    'geo' => [
+        'ativo' => (bool) env('GEO_ATIVO', true),
+        'url' => env('GEO_URL', 'https://nominatim.openstreetmap.org'),
+        'contato' => env('GEO_CONTATO', 'contato@luxatacado.com.br'),
+        'cidade_padrao' => env('GEO_CIDADE_PADRAO', 'João Pessoa - PB'),
+        // ponto de saída das entregas (a loja), usado quando o motoboy não libera a localização
+        'loja_lat' => env('GEO_LOJA_LAT'),
+        'loja_lng' => env('GEO_LOJA_LNG'),
+    ],
+
     // Taxas da maquineta (%) repassadas ao cliente — maquininha da Conta 2.
     // Usadas no "Calcular taxas da maquineta" das vendas. Mesma tabela do simulador do site.
     'maquineta' => [

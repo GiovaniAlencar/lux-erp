@@ -26,6 +26,12 @@
                     @else Pendente
                     @endif
                 </span>
+                @if(!empty($item->recebido_forma))
+                <span class="badge rounded-pill px-3 py-2 bg-light text-dark border" title="Recebido pelo motoboy{{ $item->recebido_liquido && (float) $item->recebido_liquido !== (float) $item->recebido_valor ? ' · líquido R$ ' . __moeda($item->recebido_liquido) : '' }}">
+                    💰 {{ ['pix' => 'PIX', 'dinheiro' => 'Dinheiro', 'credito' => 'Crédito', 'debito' => 'Débito'][$item->recebido_forma] ?? $item->recebido_forma }}
+                    R$ {{ __moeda($item->recebido_valor) }}{{ $item->recebido_parcelas > 1 ? ' · ' . $item->recebido_parcelas . 'x' : '' }}
+                </span>
+                @endif
                 @if($editavel && !in_array($item->status_entrega, ['entregue', 'ocorrencia'], true))
                 <button type="button"
                     class="rota-btn rota-btn-danger btn-sm py-1 px-2 btn-remover-item"

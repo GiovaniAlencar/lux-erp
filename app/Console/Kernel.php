@@ -19,6 +19,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('notificacoes:enviar')->everyMinute()->withoutOverlapping(10);
         $schedule->command('whatsapp:comprovantes')->everyMinute()->withoutOverlapping(10);
         $schedule->command('whatsapp:clientes')->everyMinute()->withoutOverlapping(10);
+        $schedule->command('rotas:geocodificar')->everyMinute()->withoutOverlapping(10);
     }
 
     /**

@@ -20,6 +20,11 @@
 
                 <div class="lux-comp-lista" aria-live="polite"></div>
 
+                <div class="lux-comp-saldo alert alert-info d-none d-flex align-items-center justify-content-between gap-2 py-2 small">
+                    <span><i class="bi bi-wallet2"></i> O cliente tem <b class="lux-comp-saldo-valor"></b> de saldo.</span>
+                    <button type="button" class="btn btn-sm btn-primary lux-comp-usar-saldo">Usar neste pedido</button>
+                </div>
+
                 <form class="lux-comp-form" enctype="multipart/form-data" novalidate>
                     <h6 class="lux-comp-form-tit">Anexar comprovante</h6>
                     <div class="lux-comp-dinheiro alert alert-success py-2 small d-none"><i class="bi bi-cash-coin"></i> <b>Pagamento em dinheiro:</b> não precisa de comprovante. Só confira o valor recebido e clique em <b>Registrar</b>.</div>
@@ -51,6 +56,10 @@
                             <input type="text" class="form-control" name="observacao" id="lux-comp-obs" maxlength="255" placeholder="Opcional">
                         </div>
                     </div>
+                    <label class="lux-comp-sobra form-check d-none mt-2 small">
+                        <input type="checkbox" class="form-check-input" name="sobra_saldo" value="1">
+                        <span class="form-check-label">O cliente pagou a mais: a sobra de <b class="lux-comp-sobra-valor"></b> vai para o <b>saldo do cliente</b> (dá para usar em outro pedido)</span>
+                    </label>
                     <div class="lux-comp-dica small text-muted mt-2 d-none"><i class="bi bi-bank"></i> Com valor, entra como <b>recebimento</b> no extrato da conta escolhida (Financeiro).</div>
                     <div class="lux-comp-erro text-danger small mt-2 d-none" role="alert"></div>
                     <div class="d-flex justify-content-end mt-3">
@@ -188,9 +197,15 @@
             modalEl.querySelector('.lux-comp-dica').classList.remove('d-none');
         }
         ajustarDinheiro();
+        ultimoPayload = d;
+        var boxSaldo = modalEl.querySelector('.lux-comp-saldo');
+        var temSaldo = d.saldo_ativo && d.saldo_cliente > 0.009;
+        boxSaldo.classList.toggle('d-none', !(temSaldo && d.falta > 0.009));
+        modalEl.querySelector('.lux-comp-saldo-valor').textContent = moeda(d.saldo_cliente);
         var inpValor = form.querySelector('[name=valor]');
         // só sugere o "falta" se a pessoa ainda não digitou um valor
         if (!inpValor.dataset.editado) inpValor.value = d.falta > 0.009 ? num(d.falta) : '';
+        ajustarSobra();
 
         document.querySelectorAll('[data-lux-comp-pago="' + d.venda + '"]').forEach(function (el) {
             el.classList.toggle('d-none', d.status_pagamento !== 'pago');
@@ -248,7 +263,38 @@
         abrirModal();
     });
 
-    form.querySelector('[name=valor]').addEventListener('input', function () { this.dataset.editado = '1'; });
+    var ultimoPayload = null;
+    function lerValorBr(t) {
+        var s = String(t || '').replace(/[^\d.,]/g, '');
+        if (!s) return 0;
+        if (s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.');
+        else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+        return parseFloat(s) || 0;
+    }
+    // valor maior que o que falta: oferece mandar a sobra para o saldo do cliente
+    function ajustarSobra() {
+        var lbl = modalEl.querySelector('.lux-comp-sobra');
+        var d = ultimoPayload;
+        var v = lerValorBr(form.querySelector('[name=valor]').value);
+        var sobra = d ? Math.round((v - d.falta) * 100) / 100 : 0;
+        var mostra = !!(d && d.saldo_ativo && sobra > 0.009);
+        lbl.classList.toggle('d-none', !mostra);
+        if (!mostra) lbl.querySelector('input').checked = false;
+        modalEl.querySelector('.lux-comp-sobra-valor').textContent = moeda(sobra);
+    }
+    form.querySelector('[name=valor]').addEventListener('input', function () { this.dataset.editado = '1'; ajustarSobra(); });
+    modalEl.querySelector('.lux-comp-usar-saldo').addEventListener('click', function () {
+        var btn = this;
+        btn.disabled = true;
+        fetch(URL_LISTAR + encodeURIComponent(vendaAtual) + '/usar-saldo', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' }
+        })
+            .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.message || 'Não foi possível usar o saldo.'); return j; }); })
+            .then(function (j) { modalEl.dataset.mudou = '1'; render(j); if (window.toastr) toastr.success('Saldo do cliente usado no pedido.'); })
+            .catch(function (err) { mostrarErro(err.message); })
+            .finally(function () { btn.disabled = false; });
+    });
     var inpArq = form.querySelector('[name=arquivo]');
     var prev = modalEl.querySelector('.lux-comp-prev');
     var prevUrl = null;

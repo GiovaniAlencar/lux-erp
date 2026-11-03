@@ -57,6 +57,15 @@ class RotaEntregaItem extends Model
 
     public static function booted(): void
     {
+        // endereço mudou: as coordenadas antigas não valem mais (o comando rotas:geocodificar refaz)
+        static::updating(function (RotaEntregaItem $item) {
+            if ($item->isDirty(['rua', 'numero', 'bairro']) && array_key_exists('geo_status', $item->getAttributes())) {
+                $item->lat = null;
+                $item->lng = null;
+                $item->geo_status = null;
+            }
+        });
+
         static::creating(function (RotaEntregaItem $item) {
             if (empty($item->token_confirmacao)) {
                 do {

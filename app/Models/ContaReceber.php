@@ -10,7 +10,7 @@ class ContaReceber extends Model
 		'venda_id', 'remessa_nfe_id', 'data_vencimento', 'data_recebimento', 'valor_integral',
 		'valor_recebido', 'referencia', 'categoria_id', 'status', 'empresa_id',
 		'cliente_id', 'juros', 'multa', 'venda_caixa_id', 'observacao', 'tipo_pagamento',
-		'filial_id'
+		'filial_id', 'na_entrega'
 	];
 
 	public function filial()

@@ -334,6 +334,27 @@
                 </button>
                 @endif
                 </span>
+                @php $tokenMotoboy = \App\Http\Controllers\MotoboyController::tokenDaRota($rota); @endphp
+                @if($tokenMotoboy)
+                @php
+                    $linkMotoboy = route('motoboy.rota', $tokenMotoboy);
+                    $msgMotoboy = 'Rota #' . $rota->id . ' — suas entregas: ' . $linkMotoboy;
+                @endphp
+                <span class="dropdown d-inline-block">
+                    <button type="button" class="rota-btn rota-btn-txt dropdown-toggle" data-bs-toggle="dropdown" title="Tela do motoboy: entregas, Waze, recebimento com foto do comprovante">
+                        <i class="bi bi-phone"></i> Link do motoboy
+                    </button>
+                    <div class="dropdown-menu p-3" style="min-width:300px">
+                        <div class="small text-muted mb-2">O motoboy abre no celular e vê todas as entregas, com Waze e recebimento. {{ $rota->status === 'rascunho' ? 'Ele só consegue confirmar depois que a rota for salva (em rota).' : '' }}</div>
+                        <input type="text" class="form-control form-control-sm mb-2" value="{{ $linkMotoboy }}" readonly onclick="this.select()">
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary flex-fill" onclick="navigator.clipboard.writeText(@js($linkMotoboy)).then(() => { this.textContent = 'Copiado!'; })"><i class="bi bi-clipboard"></i> Copiar</button>
+                            <a class="btn btn-sm btn-success flex-fill" target="_blank" rel="noopener" href="https://wa.me/?text={{ rawurlencode($msgMotoboy) }}"><i class="bi bi-whatsapp"></i> WhatsApp</a>
+                            <a class="btn btn-sm btn-outline-dark" target="_blank" rel="noopener" href="{{ $linkMotoboy }}" title="Abrir"><i class="bi bi-box-arrow-up-right"></i></a>
+                        </div>
+                    </div>
+                </span>
+                @endif
                 @if($editavel)
                 <button type="submit" form="form-rota" class="rota-btn rota-btn-save">
                     <i class="bi bi-check-lg"></i> Salvar rota

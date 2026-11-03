@@ -420,15 +420,13 @@ class CompraFiscalController extends Controller
                         'valor_unitario' => __convert_value_bd($request->valor_unitario[$i]),
                         'unidade_compra' => $request->unidade_compra[$i],
                     ]);
-                    $custoAnterior = (float) $product->valor_compra;
-                    $product->valor_compra = __convert_value_bd($request->valor_unitario[$i]);
-                    $product->aplicarReajusteAutomatico($custoAnterior);
+                    // custo médio ponderado (antes ficava o preço da última nota) e sem mexer no preço de venda
+                    $conv = (float) $product->conversao_unitaria > 0 ? (float) $product->conversao_unitaria : 1;
+                    $qtdEstoque = (float) __convert_value_bd($request->quantidade[$i]) * $conv;
+                    $custoUn = (float) __convert_value_bd($request->valor_unitario[$i]) / $conv;
+                    \App\Services\CustoMedio::aplicar($product, $qtdEstoque, $custoUn);
                     $product->save();
-                    $stockMove->pluStock(
-                        $product->id,
-                        __convert_value_bd($request->quantidade[$i]) * $product->conversao_unitaria,
-                        __convert_value_bd($request->valor_unitario[$i])
-                    );
+                    $stockMove->pluStock($product->id, $qtdEstoque, (float) $product->valor_compra);
                 }
                 if ($request->vencimento) {
                     for ($i = 0; $i < sizeof($request->vencimento); $i++) {

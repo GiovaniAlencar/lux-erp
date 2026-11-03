@@ -288,6 +288,13 @@
                         <div class="col-md-3">
                             {!! Form::tel('valor_integral_linha', 'Valor da parcela')->id('inp-valor_integral')->attrs(['class' => 'moeda']) !!}
                         </div>
+                        <div class="col-md-5">
+                            <label class="form-label" for="inp-recebimento">Recebimento</label>
+                            <select id="inp-recebimento" class="form-select">
+                                <option value="1">Cobrar na entrega</option>
+                                <option value="0">Já pago (antes da entrega)</option>
+                            </select>
+                        </div>
                         <div class="col-auto">
                             <button type="button" class="btn btn-primary btn-add-payment"><i class="bi bi-plus-lg"></i> <span class="d-none d-sm-inline ms-1">Adicionar</span></button>
                         </div>
@@ -320,6 +327,8 @@
                                     <td>
                                         <input readonly type="text" name="nome_pagamento[]" class="form-control" value="{{ old('nome_pagamento.'.$i, old('forma_pagamento_parcela.'.$i, '')) }}">
                                         <input readonly type="hidden" name="tipo_pagamentos[]" value="{{ old('tipo_pagamentos.'.$i, '') }}">
+                                        <input type="hidden" name="na_entrega[]" value="{{ old('na_entrega.'.$i, '1') }}">
+                                        <small class="d-block mt-1 {{ old('na_entrega.'.$i, '1') === '1' ? 'text-warning' : 'text-success' }}">{{ old('na_entrega.'.$i, '1') === '1' ? 'Cobrar na entrega' : 'Já pago' }}</small>
                                     </td>
                                     <td>
                                         <input type="date" name="data_vencimento[]" class="form-control" value="{{ $dataVenc }}">
@@ -337,9 +346,16 @@
                                 @elseif(isset($item))
                                 @if(sizeof($item->duplicatas) > 0)
                                 @foreach($item->duplicatas as $duplicatas)
+                                @continue(str_contains((string) $duplicatas->observacao, \App\Services\RecebimentoVenda::MARCA_RESTANTE))
+                                @php $__ne = $duplicatas->na_entrega === null ? null : ((int) $duplicatas->na_entrega ? '1' : '0'); @endphp
                                 <tr>
                                     <td>
                                         <input readonly type="tel" name="forma_pagamento_parcela[]" class="form-control" value="{{ $duplicatas->getTipoPagamento() }}">
+                                        <input type="hidden" name="tipo_pagamentos[]" value="{{ $duplicatas->tipo_pagamento }}">
+                                        <input type="hidden" name="na_entrega[]" value="{{ $__ne ?? '' }}">
+                                        @if($__ne !== null)
+                                        <small class="d-block mt-1 {{ $__ne === '1' ? 'text-warning' : 'text-success' }}">{{ $__ne === '1' ? 'Cobrar na entrega' : 'Já pago' }}</small>
+                                        @endif
                                     </td>
                                     <td>
                                         <input type="date" name="data_vencimento[]" class="form-control" value="{{ $duplicatas->data_vencimento }}">
@@ -359,6 +375,8 @@
                                     <td>
                                         <input readonly type="hidden" name="forma_pagamento" class="form-control" value="{{ $item->forma_pagamento }}">
                                         <input readonly type="tel" name="forma_pagamento_get" class="form-control" value="{{ $item->getTipoPagamento() }}">
+                                        <input type="hidden" name="tipo_pagamentos[]" value="{{ $item->tipo_pagamento }}">
+                                        <input type="hidden" name="na_entrega[]" value="">
                                     </td>
                                     <td>
                                         <input readonly type="text" name="data_vencimento[]" class="form-control" value="{{ __data_pt($item->data_registro, 0) }}">

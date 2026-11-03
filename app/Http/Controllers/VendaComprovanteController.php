@@ -84,6 +84,8 @@ class VendaComprovanteController extends Controller
             'comprovado' => $comprovado,
             'falta' => round(max(0, $total - $comprovado), 2),
             'status_pagamento' => $v->status_pagamento ?? 'pendente',
+            'saldo_cliente' => $v->cliente_id ? \App\Services\SaldoCliente::saldo((int) $v->empresa_id, (int) $v->cliente_id) : 0,
+            'saldo_ativo' => \App\Services\SaldoCliente::ativo() && (bool) $v->cliente_id,
             'contas' => $this->contasFinanceiro((int) $v->empresa_id)->map(fn ($c) => ['id' => $c->id, 'nome' => $c->nome, 'padrao' => (bool) $c->padrao, 'dinheiro' => $c->ehDinheiro()])->values(),
             'itens' => $lista->map(fn (VendaComprovante $c) => [
                 'id' => $c->id,
@@ -150,6 +152,40 @@ class VendaComprovanteController extends Controller
         return response()->json($this->payload($this->venda($request, $id)));
     }
 
+    /** Paga (parte d)o pedido com o saldo que o cliente tem guardado. */
+    public function usarSaldo(Request $request, $id)
+    {
+        $v = $this->venda($request, $id);
+        if (!\App\Services\SaldoCliente::ativo() || !$v->cliente_id) {
+            return response()->json(['message' => 'Saldo do cliente indisponível.'], 422);
+        }
+        $saldo = \App\Services\SaldoCliente::saldo((int) $v->empresa_id, (int) $v->cliente_id);
+        $ja = (float) VendaComprovante::where('empresa_id', $v->empresa_id)->where('venda_id', $v->id)->sum('valor');
+        $falta = round(max(0, self::totalVenda($v) - $ja), 2);
+        $valor = round(min($saldo, $falta), 2);
+        if ($valor <= 0) {
+            return response()->json(['message' => $falta <= 0 ? 'Este pedido já está pago.' : 'O cliente não tem saldo.'], 422);
+        }
+        DB::transaction(function () use ($v, $valor) {
+            $c = VendaComprovante::create([
+                'empresa_id' => $v->empresa_id,
+                'venda_id' => $v->id,
+                'usuario_id' => $this->usuarioId() ?: null,
+                'arquivo' => '',
+                'nome_original' => 'Saldo do cliente',
+                'conta' => 'saldo',
+                'valor' => $valor,
+                'observacao' => 'Pago com o saldo do cliente',
+            ] + ($this->integraFinanceiro() ? ['data_pagamento' => date('Y-m-d')] : []));
+            \App\Services\SaldoCliente::debitar((int) $v->empresa_id, (int) $v->cliente_id, $valor, $v->id,
+                'Usado no pedido #' . $v->id, $this->usuarioId() ?: null, $c->id);
+            self::recalcularStatusVenda($v);
+            \App\Services\RecebimentoVenda::sincronizar($v);
+            $this->auditar($v, 'comprovante_anexado', 'Pago R$ ' . __moeda($valor) . ' com o saldo do cliente.');
+        });
+        return response()->json($this->payload($v->fresh(['cliente:id,razao_social'])));
+    }
+
     public function salvar(Request $request, $id)
     {
         $v = $this->venda($request, $id);
@@ -186,6 +222,17 @@ class VendaComprovanteController extends Controller
         }
         $total = self::totalVenda($v);
         $jaComprovado = (float) VendaComprovante::where('empresa_id', $v->empresa_id)->where('venda_id', $v->id)->sum('valor');
+        // Cliente pagou a mais e o atendente marcou "a sobra vai para o saldo do cliente":
+        // o comprovante abate só o que falta e a diferença vira crédito do cliente.
+        $valorRecebido = $valor;
+        $sobraSaldo = 0.0;
+        if ($valor !== null && $request->boolean('sobra_saldo') && $v->cliente_id && \App\Services\SaldoCliente::ativo()) {
+            $falta = round(max(0, $total - $jaComprovado), 2);
+            if ($valor > $falta + 0.009) {
+                $sobraSaldo = round($valor - $falta, 2);
+                $valor = $falta > 0 ? $falta : null;
+            }
+        }
         if ($valor !== null && $jaComprovado + $valor > $total + 0.009) {
             return response()->json(['message' => 'O valor passa do total da venda: já comprovado R$ ' . __moeda($jaComprovado)
                 . ' de R$ ' . __moeda($total) . ' (falta R$ ' . __moeda(max(0, $total - $jaComprovado)) . ').'], 422);
@@ -199,7 +246,7 @@ class VendaComprovanteController extends Controller
             if (!$dinheiro) {
                 return response()->json(['message' => 'Escolha a foto ou o PDF do comprovante.'], 422);
             }
-            if ($valor === null) {
+            if ($valorRecebido === null) {
                 return response()->json(['message' => 'Informe o valor recebido em dinheiro.'], 422);
             }
         }
@@ -222,7 +269,7 @@ class VendaComprovanteController extends Controller
 
         $novoId = null;
         try {
-            DB::transaction(function () use ($v, $request, $arq, $caminho, $finConta, $contaTexto, $valor, $data, &$novoId) {
+            DB::transaction(function () use ($v, $request, $arq, $caminho, $finConta, $contaTexto, $valor, $valorRecebido, $sobraSaldo, $data, &$novoId) {
                 $nomeOriginal = $arq
                     ? (mb_substr(preg_replace('/[^\pL\pN ._()-]+/u', '', $arq->getClientOriginalName()) ?: '', 0, 150) ?: null)
                     : 'Pagamento em dinheiro';
@@ -243,16 +290,21 @@ class VendaComprovanteController extends Controller
                 $c = VendaComprovante::create($dados);
                 $novoId = $c->id;
 
-                // valor + conta do Financeiro → entrada no extrato
-                if ($finConta && $valor) {
+                if ($sobraSaldo > 0) {
+                    \App\Services\SaldoCliente::creditar((int) $v->empresa_id, (int) $v->cliente_id, $sobraSaldo, $v->id,
+                        'Pagou a mais no pedido #' . $v->id, $this->usuarioId() ?: null, $c->id);
+                }
+
+                // valor + conta do Financeiro → entrada no extrato (o que entrou de verdade, com a sobra)
+                if ($finConta && $valorRecebido) {
                     $cliente = optional($v->cliente)->razao_social;
                     $mov = FinMovimento::create([
                         'empresa_id' => $v->empresa_id,
                         'conta_id' => $finConta->id,
                         'tipo' => 'entrada',
-                        'valor' => $valor,
+                        'valor' => $valorRecebido,
                         'data' => $data,
-                        'descricao' => mb_substr('Recebimento venda #' . $v->id . ($cliente ? ' · ' . $cliente : ''), 0, 255),
+                        'descricao' => mb_substr('Recebimento venda #' . $v->id . ($cliente ? ' · ' . $cliente : '') . ($sobraSaldo > 0 ? ' (R$ ' . __moeda($sobraSaldo) . ' para o saldo do cliente)' : ''), 0, 255),
                         'origem' => 'recebimento',
                         'forma_pagamento' => $v->tipo_pagamento ? mb_substr((string) Venda::getTipo($v->tipo_pagamento), 0, 30) : null,
                         'venda_id' => $v->id,
@@ -268,6 +320,7 @@ class VendaComprovanteController extends Controller
                 $this->auditar($v, 'comprovante_anexado', ($caminho !== '' ? 'Comprovante anexado' : 'Pagamento em dinheiro registrado')
                     . ($valor ? ': R$ ' . __moeda($valor) : '')
                     . ($finConta ? ' em ' . $finConta->nome . ' (lançado no financeiro)' : ($contaTexto ? ' · ' . VendaComprovante::nomeConta($contaTexto) : ''))
+                    . ($sobraSaldo > 0 ? ' · R$ ' . __moeda($sobraSaldo) . ' para o saldo do cliente' : '')
                     . '.');
             });
         } catch (\Throwable $e) {
@@ -331,6 +384,7 @@ class VendaComprovanteController extends Controller
                 }
             }
             $valor = $c->valor;
+            \App\Services\SaldoCliente::desfazerDoComprovante($c->id); // crédito que gerou / saldo que usou
             $c->delete();
             self::recalcularStatusVenda($v);
             \App\Services\RecebimentoVenda::sincronizar($v, true);

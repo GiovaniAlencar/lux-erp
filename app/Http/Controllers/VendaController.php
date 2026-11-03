@@ -50,6 +50,19 @@ use Dompdf\Dompdf;
 
 class VendaController extends Controller
 {
+
+    /** ['na_entrega' => 1 cobrar na entrega | 0 já pago]; vazio quando a linha não informa ou o SQL 35 ainda não rodou. */
+    private static function naEntregaLinha(Request $request, int $i): array
+    {
+        static $temColuna = null;
+        $temColuna ??= \Illuminate\Support\Facades\Schema::hasColumn('conta_recebers', 'na_entrega');
+        $v = $request->na_entrega[$i] ?? null;
+        if (!$temColuna || $v === null || $v === '') {
+            return [];
+        }
+        return ['na_entrega' => (string) $v === '0' ? 0 : 1];
+    }
+
     public function index(Request $request)
     {
         if (!is_dir(public_path('xml_nfe'))) {
@@ -457,10 +470,12 @@ class VendaController extends Controller
                         }
                     }
                     (new \App\Services\EstoqueFiscal())->consumirVenda($venda->id, ItemVenda::where('venda_id', $venda->id)->get());
-                    if ($request->forma_pagamento != 'a_vista') {
+                    // pagamento misto (ex.: PIX + cartão): mesmo com a última escolha "à vista", grava todas as linhas
+                    if ($request->forma_pagamento != 'a_vista' || sizeof((array) $request->data_vencimento) > 1) {
 
                         for ($i = 0; $i < sizeof($request->data_vencimento); $i++) {
                             ContaReceber::create([
+                                ...self::naEntregaLinha($request, $i),
                                 'venda_id' => $venda->id,
                                 'cliente_id' => $request->cliente_id,
                                 'data_vencimento' => $request->data_vencimento[$i],
@@ -835,9 +850,10 @@ class VendaController extends Controller
                     }
                     (new \App\Services\EstoqueFiscal())->consumirVenda($item->id, ItemVenda::where('venda_id', $item->id)->get());
 
-                    if ($request->forma_pagamento != 'a_vista') {
+                    if ($request->forma_pagamento != 'a_vista' || sizeof((array) $request->data_vencimento) > 1) {
                         for ($i = 0; $i < sizeof($request->data_vencimento); $i++) {
                             ContaReceber::create([
+                                ...self::naEntregaLinha($request, $i),
                                 'venda_id' => $item->id,
                                 'cliente_id' => $request->cliente_id,
                                 'data_vencimento' => $request->data_vencimento[$i],
@@ -852,7 +868,8 @@ class VendaController extends Controller
                                 'multa' => 0,
                                 'venda_caixa_id' => null,
                                 'observacao' => '',
-                                'tipo_pagamento' => $request->tipo_pagamento,
+                                // cada linha com o seu tipo (antes a edição gravava tudo com o último tipo escolhido)
+                                'tipo_pagamento' => ($request->tipo_pagamentos[$i] ?? '') !== '' ? $request->tipo_pagamentos[$i] : $request->tipo_pagamento,
                                 'filial_id' => $request->filial_id != -1 ? $request->filial_id : null
                             ]);
                         }

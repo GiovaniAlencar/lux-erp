@@ -33,6 +33,7 @@ class VendaComprovante extends Model
             'fiscal' => (string) config('lux.conta_fiscal'),
             'nao_fiscal' => (string) config('lux.conta_nao_fiscal'),
             'outra' => 'Outra (dinheiro, cartão…)',
+            'saldo' => 'Saldo do cliente',
             default => '—',
         };
     }
