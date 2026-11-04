@@ -625,8 +625,10 @@ Route::middleware([
     Route::group(['prefix' => 'entregadores', 'as' => 'entregadores.'], function () {
         Route::get('/', 'MotoboyCadastroController@index')->name('index');
         Route::post('/', 'MotoboyCadastroController@salvar')->name('salvar');
-        Route::post('/gerar-acertos', 'MotoboyCadastroController@gerarPendentes')->name('gerar');
-        Route::post('/vincular-rotas', 'MotoboyCadastroController@vincular')->name('vincular');
+        Route::post('/acertos', 'MotoboyCadastroController@novo')->name('novo');
+        Route::delete('/acertos/{id}', 'MotoboyCadastroController@excluir')->whereNumber('id')->name('excluir');
+        Route::post('/acertos/{id}/rotas', 'MotoboyCadastroController@adicionarRota')->whereNumber('id')->name('rota.adicionar');
+        Route::delete('/acertos/{id}/rotas/{rota}', 'MotoboyCadastroController@removerRota')->whereNumber('id')->whereNumber('rota')->name('rota.remover');
         Route::get('/acertos/{id}', 'MotoboyCadastroController@acerto')->whereNumber('id')->name('acerto');
         Route::post('/acertos/{id}/extras', 'MotoboyCadastroController@extras')->whereNumber('id')->name('extras');
         Route::post('/acertos/{id}/pagar', 'MotoboyCadastroController@pagar')->whereNumber('id')->name('pagar');

@@ -5,47 +5,14 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
             <h5 class="mb-0">Motoboys e acertos</h5>
-            <div class="small text-muted">Ao finalizar a rota, o frete entra sozinho no acerto do motoboy e vira conta a pagar: <b>semanal</b> (sábado a sexta, vence no sábado) ou <b>avulso</b> (vence no mesmo dia).</div>
+            <div class="small text-muted">Ao finalizar a rota, o frete entra sozinho no acerto do motoboy e vira conta a pagar: <b>semanal</b> (sábado a sexta, vence no sábado) ou <b>avulso</b> (vence no mesmo dia). Para rotas antigas ou um acerto diferente, use <b>Novo acerto</b>.</div>
         </div>
-        <a href="{{ route('rotas-entrega.index') }}" class="btn btn-light"><i class="bx bx-arrow-back"></i> Rotas de entrega</a>
+        <div class="d-flex gap-2">
+            <a href="{{ route('rotas-entrega.index') }}" class="btn btn-light"><i class="bx bx-arrow-back"></i> Rotas de entrega</a>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-novo-acerto" @disabled($motoboys->where('ativo', true)->isEmpty())><i class="bx bx-plus"></i> Novo acerto</button>
+        </div>
     </div>
 
-    @if($semAcerto)
-    <div class="alert alert-warning d-flex justify-content-between align-items-center py-2">
-        <span>{{ $semAcerto }} rota(s) finalizada(s) com motoboy ainda fora de um acerto.</span>
-        <form method="post" action="{{ route('entregadores.gerar') }}">@csrf<button class="btn btn-sm btn-warning">Colocar no acerto</button></form>
-    </div>
-    @endif
-
-    @if($rotasSemMotoboy->isNotEmpty() && $motoboys->where('ativo', true)->isNotEmpty())
-    <div class="card mb-3 border-warning"><div class="card-body">
-        <h6>Rotas finalizadas sem motoboy da lista <span class="small text-muted fw-normal">(últimos 45 dias, ainda não pagas)</span></h6>
-        <p class="small text-muted">Escolha o motoboy de cada uma e clique em "Colocar no acerto": o frete entra no acerto da semana (ou do dia) daquela rota.</p>
-        <form method="post" action="{{ route('entregadores.vincular') }}">
-            @csrf
-            <div class="table-responsive"><table class="table table-sm align-middle mb-2">
-                <thead><tr><th>Rota</th><th>Data</th><th>Motoboy digitado</th><th class="text-end">Entregas</th><th class="text-end">Frete</th><th style="width:240px">Motoboy</th></tr></thead>
-                <tbody>
-                @foreach($rotasSemMotoboy as $r)
-                    @php $sugerido = $motoboys->first(fn ($mb) => $mb->ativo && $r->motoboy_nome && mb_strtolower(trim($mb->nome)) === mb_strtolower(trim($r->motoboy_nome))); @endphp
-                    <tr>
-                        <td><a href="{{ route('rotas-entrega.show', $r->id) }}" target="_blank">#{{ $r->id }}</a></td>
-                        <td class="small">{{ $r->created_at->format('d/m/Y') }} <span class="text-muted">({{ $r->created_at->locale('pt_BR')->isoFormat('ddd') }})</span></td>
-                        <td class="small">{{ $r->motoboy_nome ?: '—' }}</td>
-                        <td class="text-end small">{{ $r->itens->where('status_entrega', 'entregue')->count() }}/{{ $r->itens->count() }}</td>
-                        <td class="text-end small">{{ $m($r->itens->where('status_entrega', 'entregue')->sum('frete')) }}</td>
-                        <td><select name="rota[{{ $r->id }}]" class="form-select form-select-sm">
-                            <option value="">— não colocar —</option>
-                            @foreach($motoboys->where('ativo', true) as $mb)<option value="{{ $mb->id }}" @selected($sugerido && $sugerido->id === $mb->id)>{{ $mb->nome }} ({{ $mb->acerto === 'diario' ? 'avulso' : 'semanal' }})</option>@endforeach
-                        </select></td>
-                    </tr>
-                @endforeach
-                </tbody>
-            </table></div>
-            <div class="d-flex justify-content-end"><button class="btn btn-warning btn-sm">Colocar no acerto</button></div>
-        </form>
-    </div></div>
-    @endif
 
     <div class="row g-3">
         <div class="col-lg-7">
@@ -101,4 +68,47 @@
         </div>
     </div>
 </div>
+{{-- Novo acerto à mão: escolhe o motoboy, as rotas e o vencimento --}}
+<div class="modal fade" id="modal-novo-acerto" tabindex="-1"><div class="modal-dialog modal-lg"><form class="modal-content" method="post" action="{{ route('entregadores.novo') }}">
+    @csrf
+    <div class="modal-header"><h5 class="modal-title">Novo acerto</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+        <div class="row g-2 mb-3">
+            <div class="col-md-7"><label class="form-label">Motoboy</label>
+                <select name="entregador_id" class="form-select" required><option value="">— escolha —</option>@foreach($motoboys->where('ativo', true) as $mb)<option value="{{ $mb->id }}">{{ $mb->nome }} ({{ $mb->acerto === 'diario' ? 'avulso' : 'semanal' }})</option>@endforeach</select></div>
+            <div class="col-md-5"><label class="form-label">Vencimento</label><input type="date" name="vencimento" class="form-control" value="{{ date('Y-m-d') }}" required></div>
+        </div>
+        <label class="form-label mb-1">Rotas que entram <span class="small text-muted">(finalizadas, ainda não pagas e fora de outro acerto)</span></label>
+        @if($rotasLivres->isEmpty())
+            <p class="small text-muted mb-0">Nenhuma rota livre nos últimos 60 dias.</p>
+        @else
+        <div class="table-responsive" style="max-height:340px;overflow:auto"><table class="table table-sm align-middle mb-1">
+            <thead><tr><th></th><th>Rota</th><th>Data</th><th>Motoboy digitado</th><th class="text-end">Entregas</th><th class="text-end">Frete</th></tr></thead>
+            <tbody>
+            @foreach($rotasLivres as $r)
+                <tr>
+                    <td><input type="checkbox" class="form-check-input na-rota" name="rotas[]" value="{{ $r->id }}" data-frete="{{ $r->totalFrete() }}"></td>
+                    <td><a href="{{ route('rotas-entrega.show', $r->id) }}" target="_blank">#{{ $r->id }}</a></td>
+                    <td class="small">{{ $r->created_at->format('d/m/Y') }}</td>
+                    <td class="small">{{ $r->motoboy_nome ?: '—' }}</td>
+                    <td class="text-end small">{{ $r->itens->count() }}</td>
+                    <td class="text-end small">{{ $m($r->totalFrete()) }}</td>
+                </tr>
+            @endforeach
+            </tbody>
+        </table></div>
+        <div class="text-end fw-semibold">Fretes marcados: <span id="soma-rotas">R$ 0,00</span></div>
+        @endif
+        <div class="small text-muted mt-2">Os extras (2ª caixa, entrega que deu errado…) você lança depois, dentro do acerto.</div>
+    </div>
+    <div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Fechar</button><button class="btn btn-primary">Criar acerto</button></div>
+</form></div></div>
+@endsection
+@section('js')
+<script>
+    document.querySelectorAll('.na-rota').forEach((c) => c.addEventListener('change', () => {
+        let t = 0; document.querySelectorAll('.na-rota:checked').forEach((x) => (t += parseFloat(x.dataset.frete || 0)));
+        document.getElementById('soma-rotas').textContent = 'R$ ' + t.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }));
+</script>
 @endsection

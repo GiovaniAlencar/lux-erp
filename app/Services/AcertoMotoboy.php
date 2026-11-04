@@ -64,7 +64,8 @@ class AcertoMotoboy
                 return null;
             }
             [$ini, $fim, $venc] = self::periodo($motoboy->acerto, Carbon::parse($rota->created_at));
-            $certo = ($atual && (int) $atual->entregador_id === (int) $motoboy->id && $atual->periodo_inicio->eq($ini) && $atual->tipo === $motoboy->acerto) ? $atual : null;
+            // já está num acerto aberto deste motoboy (automático ou feito à mão): fica nele
+            $certo = ($atual && (int) $atual->entregador_id === (int) $motoboy->id) ? $atual : null;
             if (!$certo) {
                 $certo = EntregadorAcerto::where('empresa_id', $rota->empresa_id)->where('entregador_id', $motoboy->id)
                     ->where('tipo', $motoboy->acerto)->whereDate('periodo_inicio', $ini)->where('status', 'aberto')->lockForUpdate()->first()
@@ -94,7 +95,8 @@ class AcertoMotoboy
             if ($a->status === 'pago') {
                 return $a;
             }
-            $fretes = round((float) $rotas->sum(fn ($r) => $r->itens->where('status_entrega', 'entregue')->sum('frete')), 2);
+            // mesma soma que a rota mostra em "Pagamento ao motoboy" (frete de todas as entregas da rota)
+            $fretes = round((float) $rotas->sum(fn ($r) => $r->totalFrete()), 2);
             $extras = round((float) $rotas->sum(fn ($r) => $r->itens->sum(fn ($i) => (float) $i->motoboy_extra)), 2);
             $a->valor_fretes = $fretes;
             $a->valor_extras = $extras;
@@ -163,6 +165,100 @@ class AcertoMotoboy
             RotaEntrega::where('acerto_id', $a->id)->update(['motoboy_pago' => 1, 'motoboy_pago_em' => now(), 'motoboy_pago_usuario_id' => get_id_user() ?: null]);
         }
         return $a;
+    }
+
+    /** Rotas que podem entrar num acerto feito à mão: finalizadas, não pagas e fora de outro acerto. */
+    public static function rotasLivres(int $empresaId)
+    {
+        return RotaEntrega::with('itens')->where('empresa_id', $empresaId)->where('status', 'finalizada')->whereNull('acerto_id')
+            ->where(fn ($q) => $q->whereNull('motoboy_pago')->orWhere('motoboy_pago', 0))
+            ->where('created_at', '>=', now()->subDays(60))->orderByDesc('id')->get();
+    }
+
+    /** Acerto feito à mão: o motoboy, as rotas escolhidas e o vencimento. */
+    public static function criarManual(int $empresaId, Entregador $mb, array $rotaIds, string $vencimento): EntregadorAcerto
+    {
+        return DB::transaction(function () use ($empresaId, $mb, $rotaIds, $vencimento) {
+            $rotas = RotaEntrega::where('empresa_id', $empresaId)->whereIn('id', $rotaIds)->where('status', 'finalizada')
+                ->whereNull('acerto_id')->where(fn ($q) => $q->whereNull('motoboy_pago')->orWhere('motoboy_pago', 0))->lockForUpdate()->get();
+            if ($rotas->isEmpty()) {
+                throw new \InvalidArgumentException('Escolha pelo menos uma rota finalizada que ainda não foi paga.');
+            }
+            $a = EntregadorAcerto::create([
+                'empresa_id' => $empresaId, 'entregador_id' => $mb->id, 'tipo' => $mb->acerto,
+                'periodo_inicio' => $rotas->min('created_at')->format('Y-m-d'),
+                'periodo_fim' => $rotas->max('created_at')->format('Y-m-d'),
+                'vencimento' => $vencimento, 'status' => 'aberto',
+            ]);
+            foreach ($rotas as $r) {
+                $r->entregador_id = $mb->id;
+                $r->motoboy_nome = $mb->nome;
+                $r->acerto_id = $a->id;
+                $r->save();
+            }
+            return self::recalcular($a);
+        });
+    }
+
+    /** Põe ou tira uma rota de um acerto aberto (o período acompanha as rotas). */
+    public static function adicionarRota(EntregadorAcerto $a, RotaEntrega $r): EntregadorAcerto
+    {
+        if ($a->status !== 'aberto' || $r->acerto_id || $r->motoboy_pago || $r->status !== 'finalizada') {
+            throw new \InvalidArgumentException('Esta rota não pode entrar neste acerto.');
+        }
+        $r->entregador_id = $a->entregador_id;
+        $r->motoboy_nome = optional($a->motoboy)->nome ?: $r->motoboy_nome;
+        $r->acerto_id = $a->id;
+        $r->save();
+        self::ajustarPeriodo($a);
+        return self::recalcular($a);
+    }
+
+    public static function removerRota(EntregadorAcerto $a, RotaEntrega $r): EntregadorAcerto
+    {
+        if ($a->status !== 'aberto' || (int) $r->acerto_id !== (int) $a->id) {
+            throw new \InvalidArgumentException('Esta rota não está neste acerto aberto.');
+        }
+        $r->acerto_id = null;
+        $r->save();
+        self::ajustarPeriodo($a);
+        return self::recalcular($a);
+    }
+
+    private static function ajustarPeriodo(EntregadorAcerto $a): void
+    {
+        $datas = RotaEntrega::where('acerto_id', $a->id)->pluck('created_at');
+        if ($datas->isNotEmpty() && $a->tipo === 'diario') {
+            return;
+        }
+        if ($datas->isNotEmpty()) {
+            $ini = Carbon::parse($datas->min())->startOfDay();
+            $fim = Carbon::parse($datas->max())->startOfDay();
+            if ($ini->lt($a->periodo_inicio)) {
+                $a->periodo_inicio = $ini;
+            }
+            if ($fim->gt($a->periodo_fim)) {
+                $a->periodo_fim = $fim;
+            }
+            $a->save();
+        }
+    }
+
+    /** Exclui um acerto ainda não pago: apaga as contas a pagar dele e solta as rotas. */
+    public static function excluir(EntregadorAcerto $a): void
+    {
+        DB::transaction(function () use ($a) {
+            $a = EntregadorAcerto::whereKey($a->id)->lockForUpdate()->firstOrFail();
+            $contas = ContaPagar::whereIn('id', array_filter([$a->conta_fretes_id, $a->conta_extras_id]))->get();
+            if ($a->status === 'pago' || $contas->contains(fn ($c) => (int) $c->status === 1 || (float) $c->valor_pago > 0)) {
+                throw new \InvalidArgumentException('Este acerto já teve pagamento. Estorne o pagamento em Contas a pagar antes de excluir.');
+            }
+            foreach ($contas as $c) {
+                $c->delete();
+            }
+            RotaEntrega::where('acerto_id', $a->id)->update(['acerto_id' => null]);
+            $a->delete();
+        });
     }
 
     /** Paga o acerto inteiro saindo de uma conta (uma saída por conta a pagar, cada uma com a sua categoria). */

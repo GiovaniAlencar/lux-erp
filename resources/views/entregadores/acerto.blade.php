@@ -8,7 +8,14 @@
                 <span class="badge bg-{{ $aberto ? 'warning text-dark' : 'success' }} align-middle">{{ $aberto ? 'A pagar' : 'Pago em ' . optional($a->pago_em)->format('d/m/Y') }}</span></h5>
             <div class="small text-muted">{{ $a->tipo === 'diario' ? 'Avulso' : 'Semanal' }} · {{ $a->periodoTexto() }} · vence {{ $a->vencimento->format('d/m/Y') }}</div>
         </div>
-        <a href="{{ route('entregadores.index') }}" class="btn btn-light"><i class="bx bx-arrow-back"></i> Motoboys</a>
+        <div class="d-flex gap-2">
+            <a href="{{ route('entregadores.index') }}" class="btn btn-light"><i class="bx bx-arrow-back"></i> Motoboys</a>
+            @if($aberto)
+            <form method="post" action="{{ route('entregadores.excluir', $a->id) }}" onsubmit="return confirm('Excluir este acerto? As contas a pagar dele são apagadas e as rotas ficam livres para outro acerto.');">
+                @csrf @method('DELETE') <button class="btn btn-outline-danger"><i class="bx bx-trash"></i> Excluir acerto</button>
+            </form>
+            @endif
+        </div>
     </div>
 
     <div class="row g-3 mb-3">
@@ -30,17 +37,18 @@
         @csrf
         <div class="card mb-3"><div class="card-body">
             <h6>Entregas</h6>
-            <p class="small text-muted">O frete conta só nas entregas concluídas. Use <b>extra</b> para o que o motoboy recebe além do frete do pedido (2ª caixa, entrega que deu errado, volta…).</p>
+            <p class="small text-muted">O repasse é a soma dos fretes das rotas (o mesmo valor de "Pagamento ao motoboy" na rota). Use <b>extra</b> para o que o motoboy recebe além do frete do pedido (2ª caixa, entrega que deu errado, volta…).</p>
             <div class="table-responsive"><table class="table table-sm align-middle mb-0">
                 <thead><tr><th>Rota</th><th>Cliente</th><th>Situação</th><th class="text-end">Frete</th><th style="width:130px">Extra (R$)</th><th style="min-width:200px">Motivo do extra</th></tr></thead>
                 <tbody>
                 @foreach($a->rotas as $r)
                     @foreach($r->itens as $i)
                         <tr>
-                            <td class="small text-nowrap"><a href="{{ route('rotas-entrega.show', $r->id) }}" target="_blank">#{{ $r->id }}</a> · {{ $r->created_at->format('d/m') }}</td>
+                            <td class="small text-nowrap"><a href="{{ route('rotas-entrega.show', $r->id) }}" target="_blank">#{{ $r->id }}</a> · {{ $r->created_at->format('d/m') }}
+                                @if($aberto && $loop->first)<button type="submit" form="tirar-{{ $r->id }}" class="btn btn-link btn-sm text-danger p-0 ms-1" title="Tirar esta rota do acerto" onclick="return confirm('Tirar a rota #{{ $r->id }} deste acerto?');"><i class="bx bx-x-circle"></i></button>@endif</td>
                             <td class="small">{{ $i->cliente_nome }} <span class="text-muted">· pedido #{{ $i->venda_id }}</span></td>
                             <td class="small">{{ $i->status_entrega === 'entregue' ? 'Entregue' : ($i->status_entrega === 'ocorrencia' ? 'Ocorrência' : ucfirst((string) $i->status_entrega)) }}</td>
-                            <td class="text-end small">{{ $i->status_entrega === 'entregue' ? $m($i->frete) : '—' }}</td>
+                            <td class="text-end small">{{ $m($i->frete) }}</td>
                             <td><input name="extra[{{ $i->id }}][valor]" inputmode="decimal" class="form-control form-control-sm" value="{{ $i->motoboy_extra ? __moeda($i->motoboy_extra) : '' }}" @disabled(!$aberto)></td>
                             <td><input name="extra[{{ $i->id }}][motivo]" class="form-control form-control-sm" value="{{ $i->motoboy_extra_motivo }}" placeholder="Ex.: 2ª caixa, voltou sem entregar" list="motivos-extra" @disabled(!$aberto)></td>
                         </tr>
@@ -52,6 +60,25 @@
             @if($aberto)<div class="d-flex justify-content-end mt-2"><button class="btn btn-outline-primary btn-sm"><i class="bx bx-save"></i> Salvar extras</button></div>@endif
         </div></div>
     </form>
+
+    {{-- formulários de tirar rota (fora do formulário de extras) --}}
+    @if($aberto)
+        @foreach($a->rotas as $r)
+            <form id="tirar-{{ $r->id }}" method="post" action="{{ route('entregadores.rota.remover', [$a->id, $r->id]) }}" class="d-none">@csrf @method('DELETE')</form>
+        @endforeach
+        @if($rotasLivres->isNotEmpty())
+        <div class="card mb-3"><div class="card-body">
+            <form method="post" action="{{ route('entregadores.rota.adicionar', $a->id) }}" class="row g-2 align-items-end">
+                @csrf
+                <div class="col-md-8"><label class="form-label small mb-0">Adicionar rota a este acerto</label>
+                    <select name="rota_id" class="form-select" required><option value="">— escolha a rota —</option>
+                        @foreach($rotasLivres as $r)<option value="{{ $r->id }}">#{{ $r->id }} · {{ $r->created_at->format('d/m/Y') }} · {{ $r->motoboy_nome ?: 'sem motoboy' }} · {{ $r->itens->count() }} entrega(s) · frete {{ $m($r->totalFrete()) }}</option>@endforeach
+                    </select></div>
+                <div class="col-md-4"><button class="btn btn-outline-primary w-100"><i class="bx bx-plus"></i> Adicionar rota</button></div>
+            </form>
+        </div></div>
+        @endif
+    @endif
 
     @if($aberto && $a->total() > 0)
     <div class="card"><div class="card-body">

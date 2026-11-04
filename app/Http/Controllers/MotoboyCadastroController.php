@@ -38,14 +38,9 @@ class MotoboyCadastroController extends Controller
         // pagos direto em Contas a pagar também fecham o acerto
         EntregadorAcerto::where('empresa_id', $emp)->where('status', 'aberto')->get()->each(fn ($a) => AcertoMotoboy::verificarPago($a));
         $abertos = EntregadorAcerto::with('motoboy')->where('empresa_id', $emp)->where('status', 'aberto')->orderBy('vencimento')->get();
-        $semAcerto = RotaEntrega::where('empresa_id', $emp)->where('status', 'finalizada')->whereNotNull('entregador_id')
-            ->whereNull('acerto_id')->where(fn ($q) => $q->whereNull('motoboy_pago')->orWhere('motoboy_pago', 0))->count();
-        // rotas já finalizadas (de antes do cadastro) sem motoboy da lista: dá para escolher e colocar no acerto
-        $rotasSemMotoboy = RotaEntrega::with('itens')->where('empresa_id', $emp)->where('status', 'finalizada')->whereNull('entregador_id')
-            ->whereNull('acerto_id')->where(fn ($q) => $q->whereNull('motoboy_pago')->orWhere('motoboy_pago', 0))
-            ->where('created_at', '>=', now()->subDays(45))->orderByDesc('id')->get();
+        $rotasLivres = AcertoMotoboy::rotasLivres($emp);
         $pagos = EntregadorAcerto::with('motoboy')->where('empresa_id', $emp)->where('status', 'pago')->orderByDesc('pago_em')->limit(30)->get();
-        return view('entregadores.index', compact('motoboys', 'abertos', 'pagos', 'semAcerto', 'rotasSemMotoboy'));
+        return view('entregadores.index', compact('motoboys', 'abertos', 'pagos', 'rotasLivres'));
     }
 
     public function salvar(Request $request)
@@ -63,39 +58,59 @@ class MotoboyCadastroController extends Controller
         return back()->with('flash_sucesso', 'Motoboy salvo.');
     }
 
-    /** Coloca no acerto as rotas finalizadas antes desta tela existir (ou que ficaram de fora). */
-    public function gerarPendentes(Request $request)
+    /** Novo acerto à mão: motoboy, rotas e vencimento. */
+    public function novo(Request $request)
     {
         $this->exigir();
-        $rotas = RotaEntrega::where('empresa_id', $request->empresa_id)->where('status', 'finalizada')->whereNotNull('entregador_id')
-            ->whereNull('acerto_id')->where(fn ($q) => $q->whereNull('motoboy_pago')->orWhere('motoboy_pago', 0))->get();
-        foreach ($rotas as $r) {
-            AcertoMotoboy::sincronizarRota($r);
+        $request->validate(['entregador_id' => 'required|integer', 'vencimento' => 'required|date', 'rotas' => 'required|array|min:1'],
+            ['rotas.required' => 'Marque as rotas que entram neste acerto.']);
+        $mb = Entregador::where('empresa_id', $request->empresa_id)->findOrFail((int) $request->entregador_id);
+        try {
+            $a = AcertoMotoboy::criarManual((int) $request->empresa_id, $mb, array_map('intval', (array) $request->rotas), $request->vencimento);
+        } catch (\InvalidArgumentException $e) {
+            return back()->with('flash_erro', $e->getMessage());
         }
-        return back()->with('flash_sucesso', $rotas->count() . ' rota(s) colocadas no acerto.');
+        return redirect()->route('entregadores.acerto', $a->id)->with('flash_sucesso', 'Acerto criado: R$ ' . __moeda($a->total()) . ' para ' . $mb->nome . '.');
     }
 
-    /** Escolhe o motoboy de rotas já finalizadas e coloca no acerto. */
-    public function vincular(Request $request)
+    public function excluir(Request $request, $id)
     {
         $this->exigir();
-        $n = 0;
-        foreach ((array) $request->input('rota', []) as $rotaId => $entregadorId) {
-            if (!(int) $entregadorId) {
-                continue;
-            }
-            $mb = Entregador::where('empresa_id', $request->empresa_id)->find((int) $entregadorId);
-            $rota = RotaEntrega::where('empresa_id', $request->empresa_id)->where('status', 'finalizada')->whereNull('acerto_id')->find((int) $rotaId);
-            if (!$mb || !$rota || $rota->motoboy_pago) {
-                continue;
-            }
-            $rota->entregador_id = $mb->id;
-            $rota->motoboy_nome = $mb->nome;
-            $rota->save();
-            AcertoMotoboy::sincronizarRota($rota);
-            $n++;
+        $a = EntregadorAcerto::where('empresa_id', $request->empresa_id)->findOrFail((int) $id);
+        try {
+            AcertoMotoboy::excluir($a);
+        } catch (\InvalidArgumentException $e) {
+            return back()->with('flash_erro', $e->getMessage());
         }
-        return back()->with($n ? 'flash_sucesso' : 'flash_erro', $n ? "{$n} rota(s) colocadas no acerto." : 'Escolha o motoboy de pelo menos uma rota.');
+        return redirect()->route('entregadores.index')->with('flash_sucesso', 'Acerto excluído. As contas a pagar dele foram apagadas e as rotas ficaram livres.');
+    }
+
+    public function adicionarRota(Request $request, $id)
+    {
+        $this->exigir();
+        $a = EntregadorAcerto::where('empresa_id', $request->empresa_id)->findOrFail((int) $id);
+        $r = RotaEntrega::where('empresa_id', $request->empresa_id)->findOrFail((int) $request->rota_id);
+        try {
+            AcertoMotoboy::adicionarRota($a, $r);
+        } catch (\InvalidArgumentException $e) {
+            return back()->with('flash_erro', $e->getMessage());
+        }
+        return back()->with('flash_sucesso', 'Rota #' . $r->id . ' adicionada ao acerto.');
+    }
+
+    public function removerRota(Request $request, $id, $rotaId)
+    {
+        $this->exigir();
+        $a = EntregadorAcerto::where('empresa_id', $request->empresa_id)->findOrFail((int) $id);
+        $r = RotaEntrega::where('empresa_id', $request->empresa_id)->findOrFail((int) $rotaId);
+        try {
+            $a = AcertoMotoboy::removerRota($a, $r);
+        } catch (\InvalidArgumentException $e) {
+            return back()->with('flash_erro', $e->getMessage());
+        }
+        return $a->exists
+            ? back()->with('flash_sucesso', 'Rota #' . $r->id . ' tirada do acerto.')
+            : redirect()->route('entregadores.index')->with('flash_sucesso', 'Rota tirada; o acerto ficou vazio e foi removido.');
     }
 
     public function acerto(Request $request, $id)
@@ -111,7 +126,8 @@ class MotoboyCadastroController extends Controller
         }
         $contas = FinConta::daEmpresa($request->empresa_id);
         $titulos = \App\Models\ContaPagar::whereIn('id', array_filter([$a->conta_fretes_id, $a->conta_extras_id]))->get()->keyBy('id');
-        return view('entregadores.acerto', compact('a', 'contas', 'titulos'));
+        $rotasLivres = $a->status === 'aberto' ? AcertoMotoboy::rotasLivres((int) $request->empresa_id) : collect();
+        return view('entregadores.acerto', compact('a', 'contas', 'titulos', 'rotasLivres'));
     }
 
     /** Extras do motoboy por entrega (2ª caixa, entrega que deu errado…). */
