@@ -40,8 +40,12 @@ class MotoboyCadastroController extends Controller
         $abertos = EntregadorAcerto::with('motoboy')->where('empresa_id', $emp)->where('status', 'aberto')->orderBy('vencimento')->get();
         $semAcerto = RotaEntrega::where('empresa_id', $emp)->where('status', 'finalizada')->whereNotNull('entregador_id')
             ->whereNull('acerto_id')->where(fn ($q) => $q->whereNull('motoboy_pago')->orWhere('motoboy_pago', 0))->count();
+        // rotas já finalizadas (de antes do cadastro) sem motoboy da lista: dá para escolher e colocar no acerto
+        $rotasSemMotoboy = RotaEntrega::with('itens')->where('empresa_id', $emp)->where('status', 'finalizada')->whereNull('entregador_id')
+            ->whereNull('acerto_id')->where(fn ($q) => $q->whereNull('motoboy_pago')->orWhere('motoboy_pago', 0))
+            ->where('created_at', '>=', now()->subDays(45))->orderByDesc('id')->get();
         $pagos = EntregadorAcerto::with('motoboy')->where('empresa_id', $emp)->where('status', 'pago')->orderByDesc('pago_em')->limit(30)->get();
-        return view('entregadores.index', compact('motoboys', 'abertos', 'pagos', 'semAcerto'));
+        return view('entregadores.index', compact('motoboys', 'abertos', 'pagos', 'semAcerto', 'rotasSemMotoboy'));
     }
 
     public function salvar(Request $request)
@@ -69,6 +73,29 @@ class MotoboyCadastroController extends Controller
             AcertoMotoboy::sincronizarRota($r);
         }
         return back()->with('flash_sucesso', $rotas->count() . ' rota(s) colocadas no acerto.');
+    }
+
+    /** Escolhe o motoboy de rotas já finalizadas e coloca no acerto. */
+    public function vincular(Request $request)
+    {
+        $this->exigir();
+        $n = 0;
+        foreach ((array) $request->input('rota', []) as $rotaId => $entregadorId) {
+            if (!(int) $entregadorId) {
+                continue;
+            }
+            $mb = Entregador::where('empresa_id', $request->empresa_id)->find((int) $entregadorId);
+            $rota = RotaEntrega::where('empresa_id', $request->empresa_id)->where('status', 'finalizada')->whereNull('acerto_id')->find((int) $rotaId);
+            if (!$mb || !$rota || $rota->motoboy_pago) {
+                continue;
+            }
+            $rota->entregador_id = $mb->id;
+            $rota->motoboy_nome = $mb->nome;
+            $rota->save();
+            AcertoMotoboy::sincronizarRota($rota);
+            $n++;
+        }
+        return back()->with($n ? 'flash_sucesso' : 'flash_erro', $n ? "{$n} rota(s) colocadas no acerto." : 'Escolha o motoboy de pelo menos uma rota.');
     }
 
     public function acerto(Request $request, $id)

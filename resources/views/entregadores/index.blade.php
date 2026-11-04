@@ -17,6 +17,36 @@
     </div>
     @endif
 
+    @if($rotasSemMotoboy->isNotEmpty() && $motoboys->where('ativo', true)->isNotEmpty())
+    <div class="card mb-3 border-warning"><div class="card-body">
+        <h6>Rotas finalizadas sem motoboy da lista <span class="small text-muted fw-normal">(últimos 45 dias, ainda não pagas)</span></h6>
+        <p class="small text-muted">Escolha o motoboy de cada uma e clique em "Colocar no acerto": o frete entra no acerto da semana (ou do dia) daquela rota.</p>
+        <form method="post" action="{{ route('entregadores.vincular') }}">
+            @csrf
+            <div class="table-responsive"><table class="table table-sm align-middle mb-2">
+                <thead><tr><th>Rota</th><th>Data</th><th>Motoboy digitado</th><th class="text-end">Entregas</th><th class="text-end">Frete</th><th style="width:240px">Motoboy</th></tr></thead>
+                <tbody>
+                @foreach($rotasSemMotoboy as $r)
+                    @php $sugerido = $motoboys->first(fn ($mb) => $mb->ativo && $r->motoboy_nome && mb_strtolower(trim($mb->nome)) === mb_strtolower(trim($r->motoboy_nome))); @endphp
+                    <tr>
+                        <td><a href="{{ route('rotas-entrega.show', $r->id) }}" target="_blank">#{{ $r->id }}</a></td>
+                        <td class="small">{{ $r->created_at->format('d/m/Y') }} <span class="text-muted">({{ $r->created_at->locale('pt_BR')->isoFormat('ddd') }})</span></td>
+                        <td class="small">{{ $r->motoboy_nome ?: '—' }}</td>
+                        <td class="text-end small">{{ $r->itens->where('status_entrega', 'entregue')->count() }}/{{ $r->itens->count() }}</td>
+                        <td class="text-end small">{{ $m($r->itens->where('status_entrega', 'entregue')->sum('frete')) }}</td>
+                        <td><select name="rota[{{ $r->id }}]" class="form-select form-select-sm">
+                            <option value="">— não colocar —</option>
+                            @foreach($motoboys->where('ativo', true) as $mb)<option value="{{ $mb->id }}" @selected($sugerido && $sugerido->id === $mb->id)>{{ $mb->nome }} ({{ $mb->acerto === 'diario' ? 'avulso' : 'semanal' }})</option>@endforeach
+                        </select></td>
+                    </tr>
+                @endforeach
+                </tbody>
+            </table></div>
+            <div class="d-flex justify-content-end"><button class="btn btn-warning btn-sm">Colocar no acerto</button></div>
+        </form>
+    </div></div>
+    @endif
+
     <div class="row g-3">
         <div class="col-lg-7">
             <div class="card mb-3"><div class="card-body">

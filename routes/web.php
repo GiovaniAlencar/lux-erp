@@ -626,6 +626,7 @@ Route::middleware([
         Route::get('/', 'MotoboyCadastroController@index')->name('index');
         Route::post('/', 'MotoboyCadastroController@salvar')->name('salvar');
         Route::post('/gerar-acertos', 'MotoboyCadastroController@gerarPendentes')->name('gerar');
+        Route::post('/vincular-rotas', 'MotoboyCadastroController@vincular')->name('vincular');
         Route::get('/acertos/{id}', 'MotoboyCadastroController@acerto')->whereNumber('id')->name('acerto');
         Route::post('/acertos/{id}/extras', 'MotoboyCadastroController@extras')->whereNumber('id')->name('extras');
         Route::post('/acertos/{id}/pagar', 'MotoboyCadastroController@pagar')->whereNumber('id')->name('pagar');
