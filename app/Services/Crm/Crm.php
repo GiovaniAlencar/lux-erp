@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Schema;
  *  - um ciclo ativo por telefone (um cliente nunca está em duas campanhas ao mesmo tempo);
  *  - entre o último contato proativo e um novo ciclo, no mínimo "intervalo_campanhas_dias";
  *  - telefone bloqueado nunca entra;
- *  - nesta fase nada é enviado: a fila é montada e conferida na tela.
+ *  - o envio sai pela central de atendimento (Envio/Central) ou à mão (Abrir no WhatsApp + Já enviei).
  */
 class Crm
 {
@@ -41,7 +41,7 @@ class Crm
 
     public const CONFIG_PADRAO = [
         'geracao_automatica' => false,   // monta a fila sozinho todo dia (ligar depois de conferir)
-        'envio_ligado' => false,         // fase 4: envia pela central
+        'envio_ligado' => false,         // envio automático pela central (fase 3)
         'aprovar_antes' => true,         // a fila do dia só sai depois de aprovada
         'limite_diario' => 20,
         'hora_inicio' => 9,
@@ -108,6 +108,41 @@ class Crm
             return '55' . $d;
         }
         return null;
+    }
+
+    /** Número vindo do WhatsApp (pode estar sem o 9 da frente) no formato do ERP: 55 + DDD + 9 + 8 dígitos. */
+    public static function celular(?string $t): ?string
+    {
+        $n = self::telefone($t);
+        if ($n && strlen($n) === 12 && in_array($n[4], ['6', '7', '8', '9'], true)) {
+            return substr($n, 0, 4) . '9' . substr($n, 4);
+        }
+        return $n;
+    }
+
+    /** Cliente cujo celular/telefone bate com o número (DDD + últimos 8 dígitos). Só quando é um único cadastro. */
+    public static function clientePorTelefone(int $empresaId, string $tel): ?int
+    {
+        $d = substr($tel, 2);
+        $ddd = substr($d, 0, 2);
+        $fim = substr($d, -8);
+        $like = '%' . substr($fim, 0, 4) . '%' . substr($fim, 4) . '%';
+        $ids = DB::table('clientes')->where('empresa_id', $empresaId)
+            ->where(fn ($w) => $w->where('celular', 'like', $like)->orWhere('telefone', 'like', $like))
+            ->limit(20)->get(['id', 'celular', 'telefone'])
+            ->filter(function ($c) use ($ddd, $fim) {
+                foreach ([$c->celular, $c->telefone] as $t) {
+                    $x = ltrim(preg_replace('/\D+/', '', (string) $t), '0');
+                    if (str_starts_with($x, '55') && strlen($x) >= 12) {
+                        $x = substr($x, 2);
+                    }
+                    if (strlen($x) >= 10 && substr($x, -8) === $fim && substr($x, 0, 2) === $ddd) {
+                        return true;
+                    }
+                }
+                return false;
+            })->pluck('id')->unique();
+        return $ids->count() === 1 ? (int) $ids->first() : null;
     }
 
     /** Celular primeiro; telefone fixo só se for o único número com cara de celular (9 dígitos depois do DDD). */

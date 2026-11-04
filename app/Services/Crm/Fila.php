@@ -7,11 +7,11 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * Quem entra em cada campanha e a montagem da fila (fase 2: só monta; o envio vem na fase 4).
+ * Quem entra em cada campanha e a montagem da fila (o envio é feito por Envio, pela central, ou à mão).
  *
  * Compra válida = pedido do cliente que não foi cancelado (mesma regra do fechamento do mês).
  * Dias desde a última compra decidem a campanha: reposição (15–44), esfriando (45–74), inativo (75–365),
- * conforme a configuração de cada uma.
+ * conforme a configuração de cada uma. "Interessado sem compra" vem das conversas classificadas na central.
  */
 class Fila
 {
@@ -30,6 +30,13 @@ class Fila
      * Retorna lista ordenada por campanha (ordem) e, dentro dela, pela última compra mais antiga.
      */
     public static function elegiveis(int $empresaId, ?string $somenteCampanha = null): array
+    {
+        $interessados = (!$somenteCampanha || $somenteCampanha === 'interessado') ? self::elegiveisInteressados($empresaId) : [];
+        return array_merge(self::elegiveisPorCompra($empresaId, $somenteCampanha), $interessados);
+    }
+
+    /** Candidatos por última compra (reposição, esfriando, inativo). */
+    private static function elegiveisPorCompra(int $empresaId, ?string $somenteCampanha = null): array
     {
         $cfg = Crm::config($empresaId);
         $camps = Crm::campanhas($empresaId)->filter(fn ($c) => $c->chave !== 'interessado' && $c->ativa);
@@ -101,6 +108,72 @@ class Fila
         return $out;
     }
 
+    public const CLASSIFICACAO = [
+        'interessado' => 'Interessado', 'orcamento_enviado' => 'Orçamento enviado',
+        'aguardando_decisao' => 'Aguardando decisão', 'nao_comprou' => 'Não comprou',
+    ];
+
+    /**
+     * Quem conversou na central e não comprou (oportunidades classificadas pelo atendente).
+     * Entra na campanha "interessado" depois de X horas da classificação (dias_min = horas), se ainda não comprou.
+     */
+    public static function elegiveisInteressados(int $empresaId): array
+    {
+        $camp = Crm::campanhas($empresaId)->get('interessado');
+        if (!$camp || !$camp->ativa) {
+            return [];
+        }
+        $cfg = Crm::config($empresaId);
+        $limite = now()->subHours(max(0, (int) $camp->dias_min));
+        $opos = DB::table('crm_oportunidades')->where('empresa_id', $empresaId)->where('status', 'aberta')
+            ->whereIn('classificacao', array_keys(self::CLASSIFICACAO))
+            ->where('data_conversa', '<=', $limite)
+            ->where('data_conversa', '>=', now()->subDays(60))
+            ->orderBy('data_conversa')->get();
+        if ($opos->isEmpty()) {
+            return [];
+        }
+        $bloq = DB::table('crm_bloqueios')->where('empresa_id', $empresaId)->pluck('telefone')->flip();
+        $ativos = DB::table('crm_ciclos')->where('empresa_id', $empresaId)->whereIn('status', ['ativo', 'respondido'])->pluck('telefone')->flip();
+        $recentes = DB::table('crm_envios')->where('empresa_id', $empresaId)->whereNotNull('enviado_em')
+            ->where('enviado_em', '>', now()->subDays((int) $cfg['intervalo_campanhas_dias']))->pluck('telefone')->flip();
+        $out = [];
+        foreach ($opos as $o) {
+            // comprou depois da conversa? não precisa de lembrete
+            $comprou = $o->cliente_id && self::vendasValidas($empresaId)->where('v.cliente_id', $o->cliente_id)
+                ->whereRaw('COALESCE(v.data_registro, v.created_at) >= ?', [$o->data_conversa])->exists();
+            $fora = null;
+            if ($comprou) {
+                $fora = 'já comprou depois da conversa';
+            } elseif (isset($bloq[$o->telefone])) {
+                $fora = 'pediu para não receber';
+            } elseif (isset($ativos[$o->telefone])) {
+                $fora = 'já está em outra campanha';
+            } elseif (isset($recentes[$o->telefone])) {
+                $fora = 'recebeu contato há menos de ' . $cfg['intervalo_campanhas_dias'] . ' dias';
+            }
+            $nome = Crm::capitalizar((string) ($o->nome ?: ''));
+            $primeiro = preg_split('/\s+/u', $nome)[0] ?? '';
+            $out[] = [
+                'campanha' => 'interessado',
+                'campanha_id' => $camp->id,
+                'ordem' => (int) $camp->ordem,
+                'cliente_id' => $o->cliente_id ? (int) $o->cliente_id : null,
+                'oportunidade_id' => (int) $o->id,
+                'classificacao' => $o->classificacao,
+                'atendente' => $o->atendente,
+                'nome' => $nome !== '' ? $nome : Crm::formatarTelefone($o->telefone),
+                'primeiro_nome' => mb_strlen($primeiro) > 2 ? $primeiro : '',
+                'telefone' => $o->telefone,
+                'ultima' => Carbon::parse($o->data_conversa)->format('Y-m-d'),
+                'venda_id' => null,
+                'dias' => Carbon::parse($o->data_conversa)->startOfDay()->diffInDays(Carbon::today()),
+                'fora' => $fora,
+            ];
+        }
+        return $out;
+    }
+
     /** Total do pedido (mesma conta do recebimento: itens − desconto + acréscimo + frete, quando existe). */
     public static function totalVenda(object $v): float
     {
@@ -163,17 +236,24 @@ class Fila
                 continue;
             }
             $camp = $camps[$e['campanha']];
-            $ctx = self::contextoVenda($e['venda_id']) + ['dias' => $e['dias'], 'primeiro_nome' => $e['primeiro_nome']];
+            $opo = $e['oportunidade_id'] ?? null;
+            $ctx = $opo
+                ? ['dias' => $e['dias'], 'primeiro_nome' => $e['primeiro_nome'], 'classificacao' => $e['classificacao'], 'atendente' => $e['atendente']]
+                : self::contextoVenda($e['venda_id']) + ['dias' => $e['dias'], 'primeiro_nome' => $e['primeiro_nome']];
+            $motivo = $opo
+                ? (self::CLASSIFICACAO[$e['classificacao']] ?? 'Interessado') . ' na central em ' . Carbon::parse($e['ultima'])->format('d/m/Y') . ($e['atendente'] ? ' (' . $e['atendente'] . ')' : '')
+                : 'Última compra em ' . Carbon::parse($e['ultima'])->format('d/m/Y') . ' (' . $e['dias'] . ' dias)';
             try {
-                DB::transaction(function () use ($empresaId, $camp, $e, $ctx, $cfg, $usuarioId) {
+                DB::transaction(function () use ($empresaId, $camp, $e, $ctx, $cfg, $usuarioId, $opo, $motivo) {
                     $cicloId = DB::table('crm_ciclos')->insertGetId([
                         'empresa_id' => $empresaId,
                         'campanha_id' => $camp->id,
                         'cliente_id' => $e['cliente_id'],
+                        'oportunidade_id' => $opo,
                         'telefone' => $e['telefone'],
                         'nome' => mb_substr($e['nome'], 0, 150),
-                        'referencia' => 'v' . $e['venda_id'],
-                        'motivo' => 'Última compra em ' . Carbon::parse($e['ultima'])->format('d/m/Y') . ' (' . $e['dias'] . ' dias)',
+                        'referencia' => $opo ? 'o' . $opo : 'v' . $e['venda_id'],
+                        'motivo' => mb_substr($motivo, 0, 255),
                         'contexto' => json_encode($ctx, JSON_UNESCAPED_UNICODE),
                         'status' => 'ativo',
                         'usuario_id' => $usuarioId,
@@ -190,6 +270,9 @@ class Fila
                         'status' => $cfg['aprovar_antes'] ? 'aguardando_aprovacao' : 'pendente',
                         'created_at' => now(), 'updated_at' => now(),
                     ]);
+                    if ($opo) {
+                        DB::table('crm_oportunidades')->where('id', $opo)->update(['status' => 'em_campanha', 'updated_at' => now()]);
+                    }
                 });
                 $n++;
             } catch (\Illuminate\Database\QueryException $ex) {
@@ -243,6 +326,82 @@ class Fila
             DB::table('crm_envios')->where('ciclo_id', $cicloId)->whereIn('status', ['aguardando_aprovacao', 'pendente'])
                 ->update(['status' => 'cancelado', 'erro' => mb_substr($motivo, 0, 500), 'updated_at' => now()]);
         });
+    }
+
+    /** Envio feito à mão (WhatsApp aberto pelo botão): marca como enviado e começa a contar a 2ª tentativa. */
+    public static function marcarEnviado(int $empresaId, int $envioId, ?int $usuarioId): bool
+    {
+        return DB::table('crm_envios')->where('empresa_id', $empresaId)->where('id', $envioId)
+            ->whereIn('status', ['aguardando_aprovacao', 'pendente'])
+            ->update([
+                'status' => 'enviado', 'enviado_em' => now(), 'updated_at' => now(),
+                'aprovado_por' => DB::raw('COALESCE(aprovado_por, ' . (int) $usuarioId . ')'),
+                'aprovado_em' => DB::raw('COALESCE(aprovado_em, NOW())'),
+            ]) > 0;
+    }
+
+    /** O cliente respondeu: para a automação e conta a venda se ele comprar dentro da janela. */
+    public static function marcarRespondido(int $empresaId, int $cicloId, ?string $atendente = null): bool
+    {
+        return DB::transaction(function () use ($empresaId, $cicloId, $atendente) {
+            $n = DB::table('crm_ciclos')->where('empresa_id', $empresaId)->where('id', $cicloId)->where('status', 'ativo')
+                ->update(['status' => 'respondido', 'respondido_em' => now(), 'atendente' => $atendente, 'updated_at' => now()]);
+            if ($n) {
+                DB::table('crm_envios')->where('ciclo_id', $cicloId)->whereIn('status', ['aguardando_aprovacao', 'pendente'])
+                    ->update(['status' => 'cancelado', 'erro' => 'cliente respondeu', 'updated_at' => now()]);
+                DB::table('crm_envios')->where('ciclo_id', $cicloId)->whereIn('status', ['enviado', 'entregue'])
+                    ->update(['status' => 'respondido', 'updated_at' => now()]);
+            }
+            return $n > 0;
+        });
+    }
+
+    /**
+     * Régua: 2ª tentativa depois de X dias sem resposta; depois da última tentativa + X dias, encerra o ciclo
+     * (o cliente volta a poder entrar em outra campanha respeitando o intervalo entre campanhas).
+     */
+    public static function avancarCiclos(int $empresaId): array
+    {
+        $cfg = Crm::config($empresaId);
+        $dias = (int) $cfg['segunda_tentativa_dias'];
+        $maxTent = (int) $cfg['tentativas'];
+        $camps = DB::table('crm_campanhas')->where('empresa_id', $empresaId)->get()->keyBy('id');
+        $segundas = 0;
+        $encerrados = 0;
+        $ciclos = DB::table('crm_ciclos')->where('empresa_id', $empresaId)->where('status', 'ativo')->get();
+        foreach ($ciclos as $c) {
+            $envios = DB::table('crm_envios')->where('ciclo_id', $c->id)->orderBy('tentativa')->get();
+            $ult = $envios->last();
+            if (!$ult || !$ult->enviado_em || in_array($ult->status, ['aguardando_aprovacao', 'pendente', 'processando'], true)) {
+                continue; // ainda não saiu a última mensagem
+            }
+            if (\Carbon\Carbon::parse($ult->enviado_em)->gt(now()->subDays($dias))) {
+                continue; // ainda dentro do prazo de espera
+            }
+            $camp = $camps[$c->campanha_id] ?? null;
+            if ((int) $ult->tentativa < $maxTent && $camp && trim((string) $camp->texto_2) !== '') {
+                $ctx = json_decode((string) $c->contexto, true) ?: [];
+                try {
+                    DB::table('crm_envios')->insert([
+                        'empresa_id' => $empresaId, 'ciclo_id' => $c->id, 'tentativa' => (int) $ult->tentativa + 1,
+                        'uuid' => (string) Str::uuid(), 'telefone' => $c->telefone,
+                        'texto' => Crm::montarTexto($camp->texto_2, $ctx, (int) $c->id),
+                        'agendado_para' => now(),
+                        'status' => $cfg['aprovar_antes'] ? 'aguardando_aprovacao' : 'pendente',
+                        'created_at' => now(), 'updated_at' => now(),
+                    ]);
+                    $segundas++;
+                } catch (\Illuminate\Database\QueryException $e) {
+                    if ((int) ($e->errorInfo[1] ?? 0) !== 1062) {
+                        throw $e;
+                    }
+                }
+            } else {
+                self::encerrar($c->id, 'encerrado', 'sem resposta depois de ' . $ult->tentativa . ' tentativa(s)');
+                $encerrados++;
+            }
+        }
+        return ['segundas' => $segundas, 'encerrados' => $encerrados];
     }
 
     /** Não contatar mais: vale para todas as campanhas. */

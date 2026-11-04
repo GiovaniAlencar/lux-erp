@@ -575,3 +575,6 @@ Route::middleware('throttle:120,1')->group(function () {
     Route::get('/central/cliente', 'API\\CentralAtendimentoController@cliente');
     Route::get('/central/clientes', 'API\\CentralAtendimentoController@buscar');
 });
+
+// CRM LUX: avisos da central (cliente respondeu, pediu para sair, classificação…). Assinado com HMAC.
+Route::middleware('throttle:300,1')->post('/central/crm/eventos', 'API\\CrmEventosController@receber');

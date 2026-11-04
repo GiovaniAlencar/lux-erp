@@ -76,6 +76,18 @@ return [
         'erp_url' => env('CENTRAL_ATENDIMENTO_ERP_URL', ''),
     ],
 
+    // CRM LUX — envio das campanhas pela central de atendimento (fase 3). Vazio = desligado.
+    //   CRM_CENTRAL_URL   = endereço da API da central (o mesmo que o navegador usa, ex.: https://api-atendimento…)
+    //   CRM_CENTRAL_TOKEN = igual ao CRM_API_TOKEN do .env da central (24+ caracteres)
+    //   CRM_HMAC_SECRET   = igual ao CRM_HMAC_SECRET do .env da central (32+ caracteres)
+    //   CRM_TELEFONE_TESTE = seu celular, para o botão "Enviar teste" (opcional)
+    'crm' => [
+        'central_url' => rtrim((string) env('CRM_CENTRAL_URL', ''), '/'),
+        'token' => env('CRM_CENTRAL_TOKEN', ''),
+        'hmac_secret' => env('CRM_HMAC_SECRET', ''),
+        'telefone_teste' => env('CRM_TELEFONE_TESTE', ''),
+    ],
+
     // App do motoboy (link único por rota): em qual conta do Financeiro entra cada forma de pagamento
     // (parte do nome da conta, sem diferenciar maiúsculas). Dinheiro vai para a conta "Caixa"/"Dinheiro".
     'motoboy' => [

@@ -19,7 +19,11 @@
                         <input class="form-check-input" type="checkbox" name="geracao_automatica" id="geracao_automatica" value="1" @checked($cfg['geracao_automatica'])>
                         <label class="form-check-label" for="geracao_automatica"><b>Montar a fila sozinho</b> todo dia, no início do horário</label>
                     </div>
-                    <div class="small text-muted mt-2">Envio automático: <b>{{ $cfg['envio_ligado'] ? 'ligado' : 'desligado' }}</b> — é ligado na fase 4, depois da integração com a central testada.</div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" name="envio_ligado" id="envio_ligado" value="1" @checked($cfg['envio_ligado']) @disabled(!$central)>
+                        <label class="form-check-label" for="envio_ligado"><b>Envio automático pela central</b> — os aprovados saem sozinhos, um de cada vez, no horário e intervalo abaixo</label>
+                    </div>
+                    @if(!$central)<div class="small text-muted">Para ligar, configure a integração com a central (veja o quadro abaixo).</div>@endif
                 </div>
                 <div class="col-6 col-md-3"><label class="form-label">Limite por dia</label><input type="number" name="limite_diario" class="form-control" value="{{ $cfg['limite_diario'] }}" min="1" max="200"><div class="form-text">contatos novos + 2ª tentativa</div></div>
                 <div class="col-6 col-md-3"><label class="form-label">Tentativas por ciclo</label><select name="tentativas" class="form-select"><option value="1" @selected($cfg['tentativas'] == 1)>1</option><option value="2" @selected($cfg['tentativas'] == 2)>2</option></select></div>
@@ -57,7 +61,7 @@
                             @if($c->chave === 'interessado')
                                 <div class="input-group input-group-sm" style="max-width:320px"><span class="input-group-text">1º contato</span><input type="number" name="camp[{{ $c->id }}][dias_min]" class="form-control" value="{{ $c->dias_min }}"><span class="input-group-text">horas após a classificação</span></div>
                                 <input type="hidden" name="camp[{{ $c->id }}][dias_max]" value="">
-                                <div class="small text-muted">Recebe as conversas classificadas na central (fase 3).</div>
+                                <div class="small text-muted">Recebe quem conversou na central e foi classificado pelo atendente (Interessado, Orçamento enviado, Aguardando decisão, Não comprou) e ainda não comprou.</div>
                             @else
                                 <div class="input-group input-group-sm" style="max-width:420px"><span class="input-group-text">Última compra entre</span><input type="number" name="camp[{{ $c->id }}][dias_min]" class="form-control" value="{{ $c->dias_min }}"><span class="input-group-text">e</span><input type="number" name="camp[{{ $c->id }}][dias_max]" class="form-control" value="{{ $c->dias_max }}"><span class="input-group-text">dias</span></div>
                             @endif
@@ -73,5 +77,20 @@
 
         <div class="d-flex justify-content-end"><button class="btn btn-primary"><i class="bx bx-save"></i> Salvar configurações</button></div>
     </form>
+
+    <div class="card mt-3"><div class="card-body">
+        <h6>Integração com a central de atendimento</h6>
+        @if(!$central)
+            <p class="small text-muted mb-0">Desligada. No <code>.env</code> do ERP: <code>CRM_CENTRAL_URL</code> (endereço da API da central), <code>CRM_CENTRAL_TOKEN</code> e <code>CRM_HMAC_SECRET</code> — os dois últimos iguais a <code>CRM_API_TOKEN</code> e <code>CRM_HMAC_SECRET</code> do <code>.env</code> da central.</p>
+        @else
+            <p class="small mb-2">Central: <span class="badge bg-{{ $central['ok'] ? 'success' : 'danger' }}">{{ $central['texto'] }}</span></p>
+            <form method="post" action="{{ route('crm.teste') }}" class="d-flex flex-wrap gap-2 align-items-center">
+                @csrf
+                <input type="text" name="telefone" class="form-control form-control-sm" style="max-width:200px" placeholder="(83) 9 9999-9999" value="{{ $telTeste }}">
+                <button class="btn btn-sm btn-outline-primary"><i class="bx bx-send"></i> Enviar mensagem de teste</button>
+                <span class="small text-muted">Chega no seu WhatsApp; responda para ver a conversa voltar na central com a etiqueta CRM.</span>
+            </form>
+        @endif
+    </div></div>
 </div>
 @endsection

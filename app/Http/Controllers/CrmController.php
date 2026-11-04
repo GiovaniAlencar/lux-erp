@@ -2,13 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Crm\Central;
 use App\Services\Crm\Crm;
+use App\Services\Crm\Envio;
 use App\Services\Crm\Fila;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
-/** CRM LUX (fase 2): visão geral, fila de contatos, histórico e configurações. Só administrador. */
+/** CRM LUX: visão geral, fila de contatos (envio pela central ou à mão), histórico e configurações. Só administrador. */
 class CrmController extends Controller
 {
     private function exigir(): void
@@ -73,12 +75,23 @@ class CrmController extends Controller
         $this->exigir();
         $emp = (int) $request->empresa_id;
         $camps = Crm::campanhas($emp);
-        $aba = in_array($request->aba, ['aguardando', 'aprovados', 'elegiveis', 'fora'], true) ? $request->aba : 'aguardando';
+        $aba = in_array($request->aba, ['aguardando', 'aprovados', 'enviados', 'elegiveis', 'fora'], true) ? $request->aba : 'aguardando';
         $envios = collect();
         $elegiveis = collect();
+        $andamento = collect();
+        if ($aba === 'enviados') {
+            // já receberam mensagem e o ciclo segue aberto (aguardando resposta, ou respondeu e pode comprar)
+            $andamento = DB::table('crm_ciclos as c')->where('c.empresa_id', $emp)->whereIn('c.status', ['ativo', 'respondido'])
+                ->whereExists(fn ($q) => $q->from('crm_envios as e')->whereColumn('e.ciclo_id', 'c.id')->whereNotNull('e.enviado_em'))
+                ->orderByDesc('c.updated_at')->get();
+            $ultimos = DB::table('crm_envios')->whereIn('ciclo_id', $andamento->pluck('id'))->whereNotNull('enviado_em')
+                ->orderBy('tentativa')->get()->groupBy('ciclo_id');
+            $andamento->each(function ($c) use ($ultimos) { $c->envios = $ultimos[$c->id] ?? collect(); });
+        }
         if (in_array($aba, ['aguardando', 'aprovados'], true)) {
             $envios = DB::table('crm_envios as e')->join('crm_ciclos as c', 'c.id', '=', 'e.ciclo_id')
-                ->where('e.empresa_id', $emp)->where('e.status', $aba === 'aguardando' ? 'aguardando_aprovacao' : 'pendente')
+                ->where('e.empresa_id', $emp)
+                ->when($aba === 'aguardando', fn ($q) => $q->where('e.status', 'aguardando_aprovacao'), fn ($q) => $q->whereIn('e.status', ['pendente', 'processando', 'erro']))
                 ->orderBy('e.agendado_para')->orderBy('e.id')
                 ->get(['e.*', 'c.campanha_id', 'c.nome', 'c.cliente_id', 'c.motivo', 'c.contexto']);
         } else {
@@ -86,10 +99,13 @@ class CrmController extends Controller
         }
         $contagem = [
             'aguardando' => DB::table('crm_envios')->where('empresa_id', $emp)->where('status', 'aguardando_aprovacao')->count(),
-            'aprovados' => DB::table('crm_envios')->where('empresa_id', $emp)->where('status', 'pendente')->count(),
+            'aprovados' => DB::table('crm_envios')->where('empresa_id', $emp)->whereIn('status', ['pendente', 'processando', 'erro'])->count(),
+            'enviados' => DB::table('crm_ciclos as c')->where('c.empresa_id', $emp)->whereIn('c.status', ['ativo', 'respondido'])
+                ->whereExists(fn ($q) => $q->from('crm_envios as e')->whereColumn('e.ciclo_id', 'c.id')->whereNotNull('e.enviado_em'))->count(),
         ];
         $cfg = Crm::config($emp);
-        return view('crm.fila', compact('camps', 'aba', 'envios', 'elegiveis', 'contagem', 'cfg'));
+        $central = Central::configurada();
+        return view('crm.fila', compact('camps', 'aba', 'envios', 'elegiveis', 'contagem', 'cfg', 'andamento', 'central'));
     }
 
     public function gerar(Request $request)
@@ -110,7 +126,39 @@ class CrmController extends Controller
         }
         $n = DB::table('crm_envios')->where('empresa_id', $request->empresa_id)->whereIn('id', $ids)->where('status', 'aguardando_aprovacao')
             ->update(['status' => 'pendente', 'aprovado_por' => $this->usuarioId(), 'aprovado_em' => now(), 'updated_at' => now()]);
-        return back()->with('flash_sucesso', "{$n} contato(s) aprovado(s)." . (Crm::config((int) $request->empresa_id)['envio_ligado'] ? '' : ' O envio automático ainda não está ligado (fase 4).'));
+        return back()->with('flash_sucesso', "{$n} contato(s) aprovado(s)." . (Crm::config((int) $request->empresa_id)['envio_ligado']
+            ? ' Saem pela central, um de cada vez, no horário configurado.'
+            : ' O envio automático está desligado: envie pela central (botão) ou pelo WhatsApp.'));
+    }
+
+    /** Botão "Enviar pela central": manda agora este envio (salva o texto da caixa antes). */
+    public function enviarCentral(Request $request, $id)
+    {
+        $this->exigir();
+        $emp = (int) $request->empresa_id;
+        if ($request->filled('texto')) {
+            $request->validate(['texto' => 'string|min:5|max:1000']);
+            DB::table('crm_envios')->where('empresa_id', $emp)->where('id', (int) $id)
+                ->whereIn('status', ['aguardando_aprovacao', 'pendente', 'erro'])->update(['texto' => trim($request->texto), 'updated_at' => now()]);
+        }
+        [$ok, $msg] = Envio::enviar($emp, (int) $id, $this->usuarioId(), true);
+        return back()->with($ok ? 'flash_sucesso' : 'flash_erro', $msg);
+    }
+
+    /** Mensagem de teste para o CRM_TELEFONE_TESTE (ou o número digitado). */
+    public function teste(Request $request)
+    {
+        $this->exigir();
+        $tel = Crm::telefone($request->input('telefone') ?: config('lux.crm.telefone_teste'));
+        if (!$tel) {
+            return back()->with('flash_erro', 'Informe o número do teste com DDD.');
+        }
+        if (!Central::configurada()) {
+            return back()->with('flash_erro', 'Configure CRM_CENTRAL_URL, CRM_CENTRAL_TOKEN e CRM_HMAC_SECRET no .env do ERP.');
+        }
+        $nome = optional(\App\Models\Usuario::find($this->usuarioId()))->nome;
+        [$ok, $msg] = Envio::teste($tel, 'Teste do CRM LUX' . ($nome ? ' (enviado por ' . $nome . ')' : '') . ' — se você recebeu, a integração ERP → central está funcionando. Responda esta mensagem para testar a volta.');
+        return back()->with($ok ? 'flash_sucesso' : 'flash_erro', $msg);
     }
 
     public function texto(Request $request, $id)
@@ -120,6 +168,32 @@ class CrmController extends Controller
         $n = DB::table('crm_envios')->where('empresa_id', $request->empresa_id)->where('id', (int) $id)
             ->whereIn('status', ['aguardando_aprovacao', 'pendente'])->update(['texto' => trim($request->texto), 'updated_at' => now()]);
         return back()->with($n ? 'flash_sucesso' : 'flash_erro', $n ? 'Texto alterado.' : 'Este envio não pode mais ser alterado.');
+    }
+
+    public function enviado(Request $request, $id)
+    {
+        $this->exigir();
+        $ok = Fila::marcarEnviado((int) $request->empresa_id, (int) $id, $this->usuarioId());
+        return back()->with($ok ? 'flash_sucesso' : 'flash_erro', $ok ? 'Marcado como enviado. Se não responder em ' . Crm::config((int) $request->empresa_id)['segunda_tentativa_dias'] . ' dias, a 2ª mensagem entra na fila.' : 'Este envio já foi registrado.');
+    }
+
+    public function respondeu(Request $request, $id)
+    {
+        $this->exigir();
+        $nome = optional(\App\Models\Usuario::find($this->usuarioId()))->nome;
+        $ok = Fila::marcarRespondido((int) $request->empresa_id, (int) $id, $nome);
+        return back()->with($ok ? 'flash_sucesso' : 'flash_erro', $ok ? 'Marcado como respondido. Se ele comprar em até ' . Crm::config((int) $request->empresa_id)['janela_atribuicao_dias'] . ' dias, a venda conta para o CRM.' : 'Este contato não está mais em andamento.');
+    }
+
+    public function encerrarCiclo(Request $request, $id)
+    {
+        $this->exigir();
+        $c = DB::table('crm_ciclos')->where('empresa_id', $request->empresa_id)->where('id', (int) $id)->whereIn('status', ['ativo', 'respondido'])->first();
+        if (!$c) {
+            return back()->with('flash_erro', 'Este contato não está mais em andamento.');
+        }
+        Fila::encerrar((int) $c->id, 'encerrado', 'encerrado manualmente');
+        return back()->with('flash_sucesso', 'Contato encerrado.');
     }
 
     public function cancelar(Request $request, $id)
@@ -141,13 +215,18 @@ class CrmController extends Controller
             return back()->with('flash_erro', 'Telefone inválido: informe com DDD.');
         }
         Fila::bloquear((int) $request->empresa_id, $tel, 'erp', $request->observacao, $this->usuarioId());
+        Central::bloqueio($tel, true);
         return back()->with('flash_sucesso', Crm::formatarTelefone($tel) . ' não recebe mais mensagens do CRM.');
     }
 
     public function desbloquear(Request $request, $id)
     {
         $this->exigir();
-        DB::table('crm_bloqueios')->where('empresa_id', $request->empresa_id)->where('id', (int) $id)->delete();
+        $b = DB::table('crm_bloqueios')->where('empresa_id', $request->empresa_id)->where('id', (int) $id)->first();
+        if ($b) {
+            DB::table('crm_bloqueios')->where('id', $b->id)->delete();
+            Central::bloqueio($b->telefone, false);
+        }
         return back()->with('flash_sucesso', 'Telefone liberado para o CRM.');
     }
 
@@ -179,7 +258,12 @@ class CrmController extends Controller
     {
         $this->exigir();
         $emp = (int) $request->empresa_id;
-        return view('crm.config', ['cfg' => Crm::config($emp), 'camps' => Crm::campanhas($emp)]);
+        return view('crm.config', [
+            'cfg' => Crm::config($emp),
+            'camps' => Crm::campanhas($emp),
+            'central' => Central::configurada() ? Central::status() : null,
+            'telTeste' => config('lux.crm.telefone_teste'),
+        ]);
     }
 
     public function salvarConfig(Request $request)
@@ -200,6 +284,7 @@ class CrmController extends Controller
         ]);
         Crm::salvarConfig($emp, [
             'geracao_automatica' => $request->boolean('geracao_automatica'),
+            'envio_ligado' => $request->boolean('envio_ligado') && Central::configurada(),
             'aprovar_antes' => $request->boolean('aprovar_antes'),
             'limite_diario' => (int) $request->limite_diario,
             'hora_inicio' => (int) $request->hora_inicio,

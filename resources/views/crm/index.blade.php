@@ -44,7 +44,7 @@
                     @php $g = $porCampanha[$c->id] ?? collect(); $tot = $g->sum('n'); $resp = $g->whereIn('status', ['respondido', 'convertido'])->sum('n'); $conv = $g->where('status', 'convertido'); @endphp
                     <tr>
                         <td>{{ $c->nome }} @if(!$c->ativa)<span class="badge bg-light text-muted border">desligada</span>@endif
-                            <div class="small text-muted">{{ $c->chave === 'interessado' ? 'vem da central (fase 3)' : $c->dias_min . ($c->dias_max ? '–' . $c->dias_max : '+') . ' dias sem comprar' }}</div></td>
+                            <div class="small text-muted">{{ $c->chave === 'interessado' ? 'conversas classificadas na central' : $c->dias_min . ($c->dias_max ? '–' . $c->dias_max : '+') . ' dias sem comprar' }}</div></td>
                         <td class="text-end">{{ $tot }}</td>
                         <td class="text-end">{{ $resp }} @if($tot)<span class="small text-muted">({{ round($resp / $tot * 100) }}%)</span>@endif</td>
                         <td class="text-end">{{ $conv->sum('n') }}</td>

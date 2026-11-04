@@ -634,7 +634,7 @@ Route::middleware([
         Route::post('/acertos/{id}/pagar', 'MotoboyCadastroController@pagar')->whereNumber('id')->name('pagar');
     });
 
-    // CRM LUX (fase 2: monta e confere a fila; o envio entra na fase 4)
+    // CRM LUX (fila, envio pela central ou à mão, histórico, configurações)
     Route::group(['prefix' => 'crm', 'as' => 'crm.'], function () {
         Route::get('/', 'CrmController@index')->name('index');
         Route::get('/fila', 'CrmController@fila')->name('fila');
@@ -642,6 +642,11 @@ Route::middleware([
         Route::post('/fila/aprovar', 'CrmController@aprovar')->name('fila.aprovar');
         Route::post('/envios/{id}/texto', 'CrmController@texto')->whereNumber('id')->name('envio.texto');
         Route::post('/envios/{id}/cancelar', 'CrmController@cancelar')->whereNumber('id')->name('envio.cancelar');
+        Route::post('/envios/{id}/enviado', 'CrmController@enviado')->whereNumber('id')->name('envio.enviado');
+        Route::post('/envios/{id}/central', 'CrmController@enviarCentral')->whereNumber('id')->name('envio.central');
+        Route::post('/teste', 'CrmController@teste')->name('teste');
+        Route::post('/ciclos/{id}/respondeu', 'CrmController@respondeu')->whereNumber('id')->name('ciclo.respondeu');
+        Route::post('/ciclos/{id}/encerrar', 'CrmController@encerrarCiclo')->whereNumber('id')->name('ciclo.encerrar');
         Route::get('/historico', 'CrmController@historico')->name('historico');
         Route::post('/bloquear', 'CrmController@bloquear')->name('bloquear');
         Route::post('/bloqueios/{id}/liberar', 'CrmController@desbloquear')->whereNumber('id')->name('desbloquear');
