@@ -303,6 +303,7 @@ class RotaEntregaController extends Controller
 
         $request->validate([
             'motoboy_nome' => 'nullable|string|max:120',
+            'entregador_id' => 'nullable|integer',
             'itens' => 'required|array|min:1',
             'itens.*.telefone' => 'required|string|max:40',
             'itens.*.rua' => 'nullable|string|max:255',
@@ -340,6 +341,11 @@ class RotaEntregaController extends Controller
 
         DB::transaction(function () use ($rota, $request, $itensInput) {
             $rota->motoboy_nome = $request->input('motoboy_nome');
+            if (\App\Services\AcertoMotoboy::ativo() && $request->has('entregador_id')) {
+                $mb = $request->entregador_id ? \App\Models\Entregador::where('empresa_id', $rota->empresa_id)->find((int) $request->entregador_id) : null;
+                $rota->entregador_id = $mb?->id;
+                $rota->motoboy_nome = $mb ? $mb->nome : $rota->motoboy_nome;
+            }
             $rota->status = 'em_rota';
             $rota->save();
 
@@ -575,6 +581,15 @@ class RotaEntregaController extends Controller
             session()->flash('flash_warning', 'Esta rota já está marcada como paga ao motoboy.');
             return redirect()->route('rotas-entrega.show', $rota->id);
         }
+        // motoboy cadastrado: o pagamento é pelo acerto (vira conta a pagar e sai do extrato)
+        if (\App\Services\AcertoMotoboy::ativo() && $rota->entregador_id) {
+            $acerto = $rota->status === 'finalizada' ? \App\Services\AcertoMotoboy::sincronizarRota($rota) : null;
+            if ($acerto && $acerto->exists) {
+                return redirect()->route('entregadores.acerto', $acerto->id);
+            }
+            session()->flash('flash_erro', 'Finalize a rota: o frete entra no acerto do motoboy e é pago por lá.');
+            return redirect()->route('rotas-entrega.show', $rota->id);
+        }
 
         $rota->motoboy_pago = true;
         $rota->motoboy_pago_em = now();
@@ -592,6 +607,10 @@ class RotaEntregaController extends Controller
 
         if (!$rota->motoboy_pago) {
             session()->flash('flash_warning', 'Esta rota não está marcada como paga.');
+            return redirect()->route('rotas-entrega.show', $rota->id);
+        }
+        if (!empty($rota->acerto_id)) {
+            session()->flash('flash_erro', 'Esta rota foi paga pelo acerto do motoboy. Para desfazer, estorne o pagamento em Contas a pagar.');
             return redirect()->route('rotas-entrega.show', $rota->id);
         }
 
@@ -620,8 +639,9 @@ class RotaEntregaController extends Controller
 
         $rota->status = 'finalizada';
         $rota->save();
+        $acerto = \App\Services\AcertoMotoboy::sincronizarRota($rota);
 
-        session()->flash('flash_sucesso', 'Rota finalizada.');
+        session()->flash('flash_sucesso', 'Rota finalizada.' . ($acerto && $acerto->exists ? ' Frete lançado no acerto de ' . optional($acerto->motoboy)->nome . ' (vence ' . $acerto->vencimento->format('d/m') . ').' : ''));
 
         return redirect()->route('rotas-entrega.index');
     }

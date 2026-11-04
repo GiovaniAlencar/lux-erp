@@ -29,6 +29,7 @@ class Menu
 					$item('Nova venda', 'vendas.create'),
 					$item('Lista de vendas', 'vendas.index'),
 					$item('Rotas de entrega', 'rotas-entrega.index'),
+					$item('Motoboys e acertos', 'entregadores.index'),
 					$item('Orçamentos', 'orcamentoVenda.index'),
 					$item('Pré-venda', 'preVenda.index'),
 					$item('Promoções', 'promocoes.index'),
@@ -71,6 +72,7 @@ class Menu
 				'subs' => [
 					$item('Clientes', 'clientes.index'),
 					$item('Grupos de cliente', 'gruposCliente.index'),
+					$item('CRM (contatos)', 'crm.index'),
 				]
 			],
 			[

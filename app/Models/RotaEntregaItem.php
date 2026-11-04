@@ -43,6 +43,8 @@ class RotaEntregaItem extends Model
     ];
 
     protected $casts = [
+        'recebimentos' => 'array',
+        'motoboy_extra' => 'float',
         'valor_total' => 'float',
         'frete' => 'float',
         'valor_restante' => 'float',

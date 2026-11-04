@@ -123,8 +123,9 @@ class MotoboyController extends Controller
         return implode(' · ', $txt);
     }
 
-    private function itemJson(RotaEntregaItem $i): array
+    private function itemJson(RotaEntregaItem $i, ?RotaEntrega $rota = null): array
     {
+        $rota = $rota ?? $i->rota;
         $v = $i->venda;
         $cli = optional($v)->cliente;
         $falta = $v && ($v->status_pagamento ?? '') !== 'pago' ? $this->falta($v) : 0.0;
@@ -153,8 +154,17 @@ class MotoboyController extends Controller
             'falta' => $falta,
             'status' => $i->status_entrega ?: 'pendente',
             'ocorrencia' => $i->ocorrencia_tipo ? (RotaEntregaItem::tiposOcorrencia()[$i->ocorrencia_tipo] ?? $i->ocorrencia_tipo) : null,
+            'recebimentos' => array_map(fn ($r) => [
+                'id' => $r['comprovante_id'] ?? null,
+                'forma' => self::FORMAS[$r['forma']] ?? $r['forma'],
+                'valor' => (float) $r['valor'],
+                'liquido' => (float) $r['liquido'],
+                'bandeira' => !empty($r['bandeira']) ? (config('lux.maquineta.bandeiras.' . $r['bandeira'] . '.rotulo') ?? $r['bandeira']) : null,
+                'parcelas' => $r['parcelas'] ?? null,
+            ], $this->recebimentos($i)),
+            'editavel' => $rota ? $this->podeEditar($rota, $i) : false,
             'recebido' => $i->recebido_forma ? [
-                'forma' => self::FORMAS[$i->recebido_forma] ?? $i->recebido_forma,
+                'forma' => $i->recebido_forma === 'misto' ? 'Mais de uma forma' : (self::FORMAS[$i->recebido_forma] ?? $i->recebido_forma),
                 'valor' => (float) $i->recebido_valor,
                 'liquido' => (float) $i->recebido_liquido,
                 'bandeira' => $i->recebido_bandeira,
@@ -167,7 +177,7 @@ class MotoboyController extends Controller
     public function show(string $token)
     {
         $rota = $this->rota($token);
-        $itens = $rota->itens->map(fn ($i) => $this->itemJson($i))->values();
+        $itens = $rota->itens->map(fn ($i) => $this->itemJson($i, $rota))->values();
         $taxas = collect(config('lux.maquineta.bandeiras', []))->map(fn ($b) => ['nome' => $b['rotulo'], 'taxas' => $b['taxas']]);
         $loja = config('lux.geo.loja_lat') && config('lux.geo.loja_lng')
             ? ['lat' => (float) config('lux.geo.loja_lat'), 'lng' => (float) config('lux.geo.loja_lng')] : null;
@@ -185,22 +195,124 @@ class MotoboyController extends Controller
         $rota = $this->rota($token);
         return response()->json([
             'status' => $rota->status,
-            'itens' => $rota->itens->map(fn ($i) => $this->itemJson($i))->values(),
+            'itens' => $rota->itens->map(fn ($i) => $this->itemJson($i, $rota))->values(),
         ])->header('Cache-Control', 'no-store');
     }
 
-    public function entregar(Request $request, string $token, int $itemId)
+    /** Correção depois de concluída: até 12 h e enquanto o motoboy não foi pago pela rota. */
+    private const HORAS_EDICAO = 12;
+
+    private function podeEditar(RotaEntrega $rota, RotaEntregaItem $item): bool
     {
-        $rota = $this->rota($token);
-        if ($rota->status !== 'em_rota') {
-            return response()->json(['message' => 'Esta rota não está mais em andamento.'], 423);
+        if ($rota->status === 'em_rota') {
+            return true;
         }
-        $item = $rota->itens->firstWhere('id', $itemId);
-        abort_unless($item, 404);
-        if (in_array($item->status_entrega, ['entregue', 'ocorrencia'], true)) {
-            return response()->json(['message' => 'Esta entrega já foi registrada.'], 409);
+        return $rota->status === 'finalizada' && !$rota->motoboy_pago && $item->status_entrega === 'entregue'
+            && $item->confirmado_em && $item->confirmado_em->gt(now()->subHours(self::HORAS_EDICAO));
+    }
+
+    /** Lista do que o motoboy recebeu nesta entrega (mais de um pagamento é permitido). */
+    private function recebimentos(RotaEntregaItem $item): array
+    {
+        $lista = is_array($item->recebimentos) ? $item->recebimentos : [];
+        if (!$lista && $item->recebido_forma && $item->recebido_forma !== 'misto') {
+            // entrega concluída antes do SQL 38: um pagamento só, sem o id do comprovante
+            $lista = [['comprovante_id' => null, 'forma' => $item->recebido_forma, 'valor' => (float) $item->recebido_valor,
+                'liquido' => (float) $item->recebido_liquido, 'bandeira' => $item->recebido_bandeira, 'parcelas' => $item->recebido_parcelas, 'em' => null]];
+        }
+        return $lista;
+    }
+
+    /** Guarda a lista e o resumo nos campos antigos (recebido_*), usados pelas telas da rota. */
+    private function salvarRecebimentos(RotaEntregaItem $item, array $lista): void
+    {
+        if (Schema::hasColumn('rota_entrega_itens', 'recebimentos')) {
+            $item->recebimentos = array_values($lista);
+        }
+        $item->recebido_forma = !$lista ? null : (count(array_unique(array_column($lista, 'forma'))) > 1 ? 'misto' : $lista[0]['forma']);
+        $item->recebido_valor = $lista ? round(array_sum(array_column($lista, 'valor')), 2) : null;
+        $item->recebido_liquido = $lista ? round(array_sum(array_column($lista, 'liquido')), 2) : null;
+        $ult = $lista ? end($lista) : null;
+        $item->recebido_bandeira = $ult['bandeira'] ?? null;
+        $item->recebido_parcelas = $ult['parcelas'] ?? null;
+        if (!$lista) {
+            $item->recebido_comprovante = null;
+        }
+    }
+
+    /**
+     * Registra UM pagamento (forma + valor + foto) na venda do item. Não conclui a entrega.
+     * Retorna o resultado do registro ou uma resposta de erro.
+     */
+    private function registrarPagamento(Request $request, RotaEntrega $rota, RotaEntregaItem $item)
+    {
+        $forma = (string) $request->input('forma', '');
+        $valor = \App\Services\Financeiro::valorBr($request->input('valor', ''));
+        if ($forma === '') {
+            return response()->json(['message' => 'Escolha a forma de pagamento.'], 422);
+        }
+        if ($valor <= 0) {
+            return response()->json(['message' => 'Informe o valor recebido.'], 422);
+        }
+        $cartao = in_array($forma, ['credito', 'debito'], true);
+        if (($cartao || $forma === 'pix') && !$request->hasFile('foto')) {
+            return response()->json(['message' => 'Tire a foto do comprovante ' . ($cartao ? 'da maquineta' : 'do PIX') . '.'], 422);
+        }
+        $bandeira = null;
+        $parcelas = null;
+        $liquido = $valor;
+        if ($cartao) {
+            $bandeira = (string) $request->input('bandeira', 'visa_master');
+            $tabela = config('lux.maquineta.bandeiras.' . $bandeira . '.taxas');
+            if (!is_array($tabela)) {
+                return response()->json(['message' => 'Escolha a bandeira do cartão.'], 422);
+            }
+            $parcelas = $forma === 'debito' ? 1 : (int) $request->input('parcelas', 1);
+            $taxa = (float) ($forma === 'debito' ? ($tabela['debito'] ?? 0) : ($tabela[$parcelas] ?? 0));
+            $liquido = round($valor * (1 - $taxa / 100), 2);
         }
 
+        $conta = $this->contaDaForma((int) $rota->empresa_id, $forma);
+        $arquivo = '';
+        $nome = null;
+        if ($request->hasFile('foto')) {
+            $f = $request->file('foto');
+            $ext = in_array(strtolower((string) $f->extension()), ['png', 'webp'], true) ? strtolower((string) $f->extension()) : 'jpg';
+            $arquivo = $f->storeAs('comprovantes-vendas/' . (int) $rota->empresa_id . '/' . date('Y-m'), Str::uuid() . '.' . $ext, 'local');
+            $nome = 'comprovante-motoboy-' . $item->venda_id . '.' . $ext;
+        }
+        $formaTexto = self::FORMAS[$forma] . ($cartao ? ' ' . (config('lux.maquineta.bandeiras.' . $bandeira . '.rotulo') ?? '') . ($forma === 'credito' ? ' ' . $parcelas . 'x' : '') : '') . ' · motoboy';
+
+        try {
+            $resultado = RegistroRecebimento::registrar(
+                $item->venda, $conta, $valor, $liquido, date('Y-m-d'), $arquivo, $nome,
+                $request->input('observacao') ?: ('Recebido pelo motoboy' . ($rota->motoboy_nome ? ' ' . $rota->motoboy_nome : '')),
+                null, $formaTexto, true, $conta ? null : 'outra'
+            );
+        } catch (\Throwable $e) {
+            if ($arquivo !== '') {
+                \Storage::disk('local')->delete($arquivo);
+            }
+            return response()->json(['message' => $e instanceof \InvalidArgumentException ? $e->getMessage() : 'Não foi possível registrar o pagamento. Tente de novo.'], 422);
+        }
+        RegistroRecebimento::enviarGrupo($resultado['comprovante'], $conta);
+
+        $lista = $this->recebimentos($item);
+        $lista[] = [
+            'comprovante_id' => $resultado['comprovante']->id,
+            'forma' => $forma, 'valor' => $valor, 'liquido' => $liquido,
+            'bandeira' => $bandeira, 'parcelas' => $parcelas, 'em' => now()->format('Y-m-d H:i'),
+        ];
+        $this->salvarRecebimentos($item, $lista);
+        if ($arquivo !== '') {
+            $item->recebido_comprovante = $arquivo;
+        }
+        $item->save();
+        return $resultado;
+    }
+
+    private function validarPagamento(Request $request): void
+    {
         $request->validate([
             'forma' => 'nullable|in:pix,dinheiro,credito,debito',
             'valor' => 'nullable|string|max:20',
@@ -213,86 +325,100 @@ class MotoboyController extends Controller
             'foto.mimes' => 'A foto precisa ser JPG, PNG ou WEBP.',
             'foto.max' => 'A foto pode ter no máximo 8 MB.',
         ]);
+    }
 
-        $venda = $item->venda;
-        $falta = $this->falta($venda);
+    private function itemDaRota(RotaEntrega $rota, int $itemId): RotaEntregaItem
+    {
+        $item = $rota->itens->firstWhere('id', $itemId);
+        abort_unless($item, 404);
+        return $item;
+    }
+
+    /** Registra uma parte do pagamento sem concluir a entrega (ex.: PIX agora, o resto no cartão). */
+    public function pagamento(Request $request, string $token, int $itemId)
+    {
+        $rota = $this->rota($token);
+        $item = $this->itemDaRota($rota, $itemId);
+        if (!$this->podeEditar($rota, $item) || $item->status_entrega === 'ocorrencia') {
+            return response()->json(['message' => 'Esta entrega não pode mais ser alterada pelo app. Fale com a loja.'], 423);
+        }
+        $this->validarPagamento($request);
+        $r = $this->registrarPagamento($request, $rota, $item);
+        if ($r instanceof \Illuminate\Http\JsonResponse) {
+            return $r;
+        }
+        $item->refresh()->load('venda.cliente.cidade');
+        return response()->json(['item' => $this->itemJson($item, $rota), 'saldo' => $r['saldo'] ?? 0, 'falta' => $this->falta($item->venda)]);
+    }
+
+    /** Desfaz um pagamento lançado errado nesta entrega (estorna do extrato e apaga o comprovante). */
+    public function desfazerPagamento(Request $request, string $token, int $itemId, int $comprovanteId)
+    {
+        $rota = $this->rota($token);
+        $item = $this->itemDaRota($rota, $itemId);
+        if (!$this->podeEditar($rota, $item)) {
+            return response()->json(['message' => 'Esta entrega não pode mais ser alterada pelo app. Fale com a loja.'], 423);
+        }
+        $lista = $this->recebimentos($item);
+        $pos = collect($lista)->search(fn ($r) => (int) ($r['comprovante_id'] ?? 0) === $comprovanteId);
+        if ($pos === false) {
+            return response()->json(['message' => 'Este pagamento não foi lançado por esta entrega.'], 404);
+        }
+        $c = VendaComprovante::where('venda_id', $item->venda_id)->find($comprovanteId);
+        if ($c) {
+            RegistroRecebimento::desfazer($c, 'corrigido pelo motoboy' . ($rota->motoboy_nome ? ' ' . $rota->motoboy_nome : '') . ' (rota #' . $rota->id . ')');
+        }
+        unset($lista[$pos]);
+        $this->salvarRecebimentos($item, array_values($lista));
+        $item->save();
+        $item->refresh()->load('venda.cliente.cidade');
+        return response()->json(['item' => $this->itemJson($item, $rota), 'falta' => $this->falta($item->venda)]);
+    }
+
+    public function entregar(Request $request, string $token, int $itemId)
+    {
+        $rota = $this->rota($token);
+        if ($rota->status !== 'em_rota') {
+            return response()->json(['message' => 'Esta rota não está mais em andamento.'], 423);
+        }
+        $item = $this->itemDaRota($rota, $itemId);
+        if (in_array($item->status_entrega, ['entregue', 'ocorrencia'], true)) {
+            return response()->json(['message' => 'Esta entrega já foi registrada.'], 409);
+        }
+        $this->validarPagamento($request);
+
         $semPagamento = $request->boolean('sem_pagamento');
-        $forma = (string) $request->input('forma', '');
         $valor = \App\Services\Financeiro::valorBr($request->input('valor', ''));
         $resultado = null;
-
-        if (!$semPagamento && $valor > 0) {
-            if ($forma === '') {
-                return response()->json(['message' => 'Escolha a forma de pagamento.'], 422);
+        if ($valor > 0) {
+            $resultado = $this->registrarPagamento($request, $rota, $item);
+            if ($resultado instanceof \Illuminate\Http\JsonResponse) {
+                return $resultado;
             }
-            $cartao = in_array($forma, ['credito', 'debito'], true);
-            if (($cartao || $forma === 'pix') && !$request->hasFile('foto')) {
-                return response()->json(['message' => 'Tire a foto do comprovante ' . ($cartao ? 'da maquineta' : 'do PIX') . '.'], 422);
-            }
-            $bandeira = null;
-            $parcelas = null;
-            $liquido = $valor;
-            if ($cartao) {
-                $bandeira = (string) $request->input('bandeira', 'visa_master');
-                $tabela = config('lux.maquineta.bandeiras.' . $bandeira . '.taxas');
-                if (!is_array($tabela)) {
-                    return response()->json(['message' => 'Escolha a bandeira do cartão.'], 422);
-                }
-                $parcelas = $forma === 'debito' ? 1 : (int) $request->input('parcelas', 1);
-                $taxa = (float) ($forma === 'debito' ? ($tabela['debito'] ?? 0) : ($tabela[$parcelas] ?? 0));
-                $liquido = round($valor * (1 - $taxa / 100), 2);
-            }
-
-            $conta = $this->contaDaForma((int) $rota->empresa_id, $forma);
-            $arquivo = '';
-            $nome = null;
-            if ($request->hasFile('foto')) {
-                $f = $request->file('foto');
-                $ext = in_array(strtolower((string) $f->extension()), ['png', 'webp'], true) ? strtolower((string) $f->extension()) : 'jpg';
-                $arquivo = $f->storeAs('comprovantes-vendas/' . (int) $rota->empresa_id . '/' . date('Y-m'), Str::uuid() . '.' . $ext, 'local');
-                $nome = 'comprovante-motoboy-' . $item->venda_id . '.' . $ext;
-            }
-            $formaTexto = self::FORMAS[$forma] . ($cartao ? ' ' . (config('lux.maquineta.bandeiras.' . $bandeira . '.rotulo') ?? '') . ($forma === 'credito' ? ' ' . $parcelas . 'x' : '') : '') . ' · motoboy';
-
-            try {
-                $resultado = RegistroRecebimento::registrar(
-                    $venda, $conta, $valor, $liquido, date('Y-m-d'), $arquivo, $nome,
-                    $request->input('observacao') ?: ('Recebido pelo motoboy' . ($rota->motoboy_nome ? ' ' . $rota->motoboy_nome : '')),
-                    null, $formaTexto, true, $conta ? null : 'outra'
-                );
-            } catch (\Throwable $e) {
-                if ($arquivo !== '') {
-                    \Storage::disk('local')->delete($arquivo);
-                }
-                return response()->json(['message' => $e instanceof \InvalidArgumentException ? $e->getMessage() : 'Não foi possível registrar o pagamento. Tente de novo.'], 422);
-            }
-            RegistroRecebimento::enviarGrupo($resultado['comprovante'], $conta);
-
-            $item->recebido_forma = $forma;
-            $item->recebido_valor = $valor;
-            $item->recebido_liquido = $liquido;
-            $item->recebido_bandeira = $bandeira;
-            $item->recebido_parcelas = $parcelas;
-            $item->recebido_comprovante = $arquivo !== '' ? $arquivo : null;
-        } elseif (!$semPagamento && $falta > 0.009) {
-            return response()->json(['message' => 'Informe o valor recebido ou marque "não recebi / vai pagar depois".'], 422);
+        }
+        $falta = $this->falta($item->venda()->first());
+        if (!$semPagamento && $falta > 0.009) {
+            return response()->json([
+                'message' => 'Ainda falta R$ ' . number_format($falta, 2, ',', '.') . '. Registre o restante ou marque "não recebi / vai pagar depois".',
+                'item' => $this->itemJson($item->fresh()->load('venda.cliente.cidade'), $rota),
+            ], 422);
         }
 
         $item->status_entrega = 'entregue';
         $item->ocorrencia_tipo = null;
-        $item->ocorrencia_observacao = $semPagamento && $falta > 0.009 ? 'Entregue sem receber (vai pagar depois)' : null;
+        $item->ocorrencia_observacao = $semPagamento && $falta > 0.009 ? 'Entregue sem receber o restante (vai pagar depois)' : null;
         $item->confirmado_em = now();
         $item->save();
 
         $this->statusVenda($item, 'entregue', 'Pedido entregue (app do motoboy)'
-            . ($semPagamento && $falta > 0.009 ? ' — sem receber, vai pagar depois.' : '.'));
+            . ($semPagamento && $falta > 0.009 ? ' — faltou receber R$ ' . number_format($falta, 2, ',', '.') . ', vai pagar depois.' : '.'));
         $this->verificarFim($rota);
 
         $item->refresh()->load('venda.cliente.cidade');
         return response()->json([
-            'item' => $this->itemJson($item),
-            'saldo' => $resultado['saldo'] ?? 0,
-            'falta' => $resultado ? $this->falta($venda->fresh()) : $falta,
+            'item' => $this->itemJson($item, $rota->fresh()),
+            'saldo' => is_array($resultado) ? ($resultado['saldo'] ?? 0) : 0,
+            'falta' => $this->falta($item->venda),
         ]);
     }
 
@@ -321,7 +447,7 @@ class MotoboyController extends Controller
         $this->verificarFim($rota);
 
         $item->refresh()->load('venda.cliente.cidade');
-        return response()->json(['item' => $this->itemJson($item)]);
+        return response()->json(['item' => $this->itemJson($item, $rota)]);
     }
 
     /** Conta do Financeiro de cada forma (config lux.motoboy). null = sem financeiro configurado. */
@@ -374,6 +500,11 @@ class MotoboyController extends Controller
             ->where(fn ($q) => $q->whereNull('status_entrega')->orWhere('status_entrega', 'pendente'))->count();
         if ($pendentes === 0 && $rota->status === 'em_rota') {
             RotaEntrega::whereKey($rota->id)->update(['status' => 'finalizada']);
+            try {
+                \App\Services\AcertoMotoboy::sincronizarRota($rota->fresh());
+            } catch (\Throwable $e) {
+                \Log::warning('Acerto do motoboy (rota #' . $rota->id . '): ' . $e->getMessage());
+            }
         }
     }
 }

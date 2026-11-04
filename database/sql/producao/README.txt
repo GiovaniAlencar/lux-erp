@@ -33,6 +33,9 @@ Ordem sugerida:
 30) 34_fechamento_mes.sql (fechamento do mês: divisão entre sócios, retiradas e a foto do fechamento; requer 26, 29 e 33)
 31) 35_recebimento_na_entrega.sql (cada pagamento da venda marca se já foi pago ou se o motoboy cobra na entrega)
 32) 36_pedido_compra_agente.sql (% do agente no pedido de compra, antes da conversão do dólar; requer 33)
+33) 37_crm.sql (CRM LUX: campanhas, fila de contatos, histórico, bloqueios; nesta fase não envia nada)
+34) 38_motoboy_varios_pagamentos.sql (motoboy: mais de um pagamento por entrega e correção depois de concluída; requer 32)
+35) 39_motoboys_acertos.sql (motoboys cadastrados e acerto do frete: conta a pagar semanal ou no dia, extras como despesa; requer 26 e 29)
 
 Deploy completo (SQL + lista de arquivos FTP): ver DEPLOY_JUN2026.txt
 

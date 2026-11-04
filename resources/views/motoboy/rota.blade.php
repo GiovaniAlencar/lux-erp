@@ -159,7 +159,8 @@
     if (!feito && i._km != null) tags += '<span class="tag">' + (i._km < 1 ? Math.round(i._km * 1000) + ' m' : i._km.toFixed(1) + ' km') + '</span>';
     if (i.status === 'entregue') tags += '<span class="tag ok">✔ Entregue ' + esc(i.concluido_em || '') + '</span>';
     if (i.status === 'ocorrencia') tags += '<span class="tag oc">⚠ ' + esc(i.ocorrencia || 'Ocorrência') + '</span>';
-    if (i.recebido) tags += '<span class="tag">' + esc(i.recebido.forma) + ' ' + moeda(i.recebido.valor) + (i.recebido.parcelas > 1 ? ' ' + i.recebido.parcelas + 'x' : '') + '</span>';
+    (i.recebimentos || []).forEach((p) => (tags += '<span class="tag">' + esc(p.forma) + ' ' + moeda(p.valor) + (p.parcelas > 1 ? ' ' + p.parcelas + 'x' : '') + '</span>'));
+    if (!feito && (i.recebimentos || []).length && i.falta > 0) tags += '<span class="tag co">Falta ' + moeda(i.falta) + '</span>';
 
     let acoes = '<div class="acoes">' +
       '<a class="btn btn-waze" href="' + linkWaze(i) + '" target="_blank" rel="noopener">🚗 Waze</a>' +
@@ -169,6 +170,9 @@
       acoes += '<button class="btn btn-ok" data-entregar="' + i.id + '">✔ Entregue' + (i.falta > 0 ? ' / receber' : '') + '</button>' +
         '<button class="btn btn-oc" data-ocorrencia="' + i.id + '">⚠ Ocorrência</button>' +
         (i.telefone ? '<a class="btn btn-sec" href="tel:+' + esc(i.telefone) + '">📞 Ligar</a>' : '<span></span>');
+    }
+    if (feito && i.status === 'entregue' && i.editavel && (i.falta > 0 || (i.recebimentos || []).some((p) => p.id))) {
+      acoes += '<button class="btn btn-sec" data-editar="' + i.id + '">✏️ Corrigir pagamento</button>';
     }
     acoes += '</div>';
 
@@ -188,7 +192,7 @@
     $('#progresso').textContent = ok + ' de ' + total + ' entregas concluídas';
     $('#barra').style.width = (total ? Math.round((ok / total) * 100) : 0) + '%';
     const receber = pend.reduce((s, i) => s + (i.falta || 0), 0);
-    const somar = (f) => itens.filter((i) => i.recebido && f(i.recebido.forma)).reduce((s, i) => s + i.recebido.valor, 0);
+    const somar = (f) => itens.reduce((s, i) => s + (i.recebimentos || []).filter((p) => f(p.forma)).reduce((t, p) => t + p.valor, 0), 0);
     $('#resumo').innerHTML = '<span>A receber: ' + moeda(receber) + '</span>' +
       '<span>💵 Dinheiro: ' + moeda(somar((f) => f === 'Dinheiro')) + '</span>' +
       '<span>PIX: ' + moeda(somar((f) => f === 'PIX')) + '</span>' +
@@ -248,25 +252,45 @@
     $('#cv').addEventListener('input', calc); $('#cb').addEventListener('change', calc); calc();
   };
 
-  // Recebimento na entrega
-  function abrirEntregar(i) {
-    const st = { forma: i.falta > 0 ? '' : 'nenhum', bandeira: 'visa_master', parcelas: '1', foto: null };
-    abrir('<h2>' + esc(i.cliente) + '</h2><div class="sub">Pedido #' + i.venda + ' · ' + esc(i.endereco) + '</div>' +
-      (i.falta > 0
-        ? '<div class="calc"><div class="linha"><span>Falta receber do pedido</span><b>' + moeda(i.falta) + '</b></div>' + (i.forma_prevista ? '<div class="linha"><span>Combinado</span><span>' + esc(i.forma_prevista) + '</span></div>' : '') + '</div>' +
-          '<label class="l">Como o cliente pagou?</label><div class="grid2" id="formas">' +
-          '<button class="opc" data-f="pix">PIX</button><button class="opc" data-f="dinheiro">💵 Dinheiro</button>' +
-          '<button class="opc" data-f="credito">💳 Crédito</button><button class="opc" data-f="debito">💳 Débito</button></div>' +
-          '<div id="cartao" style="display:none"><label class="l">Bandeira</label><select class="in" id="eb">' + opcoesBandeira('visa_master') + '</select>' +
-          '<div id="boxParc"><label class="l">Parcelas</label><select class="in" id="ep">' + Array.from({ length: 18 }, (_, k) => '<option value="' + (k + 1) + '">' + (k + 1) + 'x</option>').join('') + '</select></div>' +
-          '<div class="calc" id="ecalc"></div></div>' +
-          '<label class="l" id="lv">Valor recebido</label><input class="in valor-grande" id="ev" inputmode="decimal" value="' + String(i.falta.toFixed(2)).replace('.', ',') + '">' +
-          '<div class="comp" id="eobs" style="margin-top:6px"></div>' +
-          '<div id="boxFoto" style="display:none"><label class="l">Foto do comprovante</label><label class="foto" id="fotoLbl"><input type="file" accept="image/*" capture="environment" id="ef" style="display:none"><span>📷 Toque para tirar a foto</span></label></div>' +
-          '<label class="check"><input type="checkbox" id="esem"> Não recebi — cliente vai pagar depois</label>'
-        : '<div class="calc"><div class="linha"><span>Pagamento</span><b style="color:#059669">Já está pago</b></div></div>') +
-      '<div class="erro" id="eerro"></div>' +
-      '<div class="acoes"><button class="btn btn-sec" onclick="fechar()">Cancelar</button><button class="btn btn-ok" style="grid-column:auto" id="econf">Confirmar entrega</button></div>');
+  // Recebimento na entrega (aceita mais de um pagamento: parte no PIX, o resto no cartão…)
+  // editar = entrega já concluída: corrigir o que foi lançado (desfazer e lançar de novo)
+  function abrirEntregar(i, editar) {
+    const st = { forma: '', bandeira: 'visa_master', parcelas: '1', foto: null };
+    const pagos = i.recebimentos || [];
+    const listaPagos = pagos.length
+      ? '<div class="calc"><div class="linha"><span><b>Já registrado nesta entrega</b></span><span></span></div>' +
+        pagos.map((p) => '<div class="linha"><span>' + esc(p.forma) + (p.bandeira ? ' ' + esc(p.bandeira) : '') + (p.parcelas > 1 ? ' ' + p.parcelas + 'x' : '') + ' · ' + moeda(p.valor) + '</span>' +
+          (p.id ? '<button class="btn btn-sec" style="padding:4px 10px;font-size:13px" data-desfazer="' + p.id + '">Desfazer</button>' : '<span></span>') + '</div>').join('') + '</div>'
+      : '';
+    const formulario = i.falta > 0
+      ? '<div class="calc"><div class="linha"><span>' + (pagos.length ? 'Ainda falta receber' : 'Falta receber do pedido') + '</span><b>' + moeda(i.falta) + '</b></div>' + (i.forma_prevista && !pagos.length ? '<div class="linha"><span>Combinado</span><span>' + esc(i.forma_prevista) + '</span></div>' : '') + '</div>' +
+        '<label class="l">Como o cliente pagou' + (pagos.length ? ' o restante' : '') + '?</label><div class="grid2" id="formas">' +
+        '<button class="opc" data-f="pix">PIX</button><button class="opc" data-f="dinheiro">💵 Dinheiro</button>' +
+        '<button class="opc" data-f="credito">💳 Crédito</button><button class="opc" data-f="debito">💳 Débito</button></div>' +
+        '<div id="cartao" style="display:none"><label class="l">Bandeira</label><select class="in" id="eb">' + opcoesBandeira('visa_master') + '</select>' +
+        '<div id="boxParc"><label class="l">Parcelas</label><select class="in" id="ep">' + Array.from({ length: 18 }, (_, k) => '<option value="' + (k + 1) + '">' + (k + 1) + 'x</option>').join('') + '</select></div>' +
+        '<div class="calc" id="ecalc"></div></div>' +
+        '<label class="l" id="lv">Valor recebido</label><input class="in valor-grande" id="ev" inputmode="decimal" value="' + String(i.falta.toFixed(2)).replace('.', ',') + '">' +
+        '<div class="comp" id="eobs" style="margin-top:6px"></div>' +
+        '<div class="comp" style="margin-top:4px">Cliente vai pagar uma parte de outro jeito? Digite só o valor desta forma e toque em <b>“Registrar e receber o resto”</b>.</div>' +
+        '<div id="boxFoto" style="display:none"><label class="l">Foto do comprovante</label><label class="foto" id="fotoLbl"><input type="file" accept="image/*" capture="environment" id="ef" style="display:none"><span>📷 Toque para tirar a foto</span></label></div>' +
+        (editar ? '' : '<label class="check"><input type="checkbox" id="esem"> Não recebi' + (pagos.length ? ' o restante' : '') + ' — cliente vai pagar depois</label>')
+      : '<div class="calc"><div class="linha"><span>Pagamento</span><b style="color:#059669">' + (pagos.length ? 'Recebido por completo' : 'Já está pago') + '</b></div></div>';
+    const botoes = editar
+      ? '<button class="btn btn-sec" onclick="fechar()">Fechar</button>' + (i.falta > 0 ? '<button class="btn btn-ok" style="grid-column:auto" id="eparcial">Registrar pagamento</button>' : '<span></span>')
+      : '<button class="btn btn-sec" onclick="fechar()">Cancelar</button><button class="btn btn-ok" style="grid-column:auto" id="econf">Confirmar entrega</button>' +
+        (i.falta > 0 ? '<button class="btn btn-sec" style="grid-column:1 / -1" id="eparcial">➕ Registrar e receber o resto</button>' : '');
+    abrir('<h2>' + (editar ? '✏️ Corrigir pagamento · ' : '') + esc(i.cliente) + '</h2><div class="sub">Pedido #' + i.venda + ' · ' + esc(i.endereco) + '</div>' +
+      (editar ? '<div class="comp" style="margin-bottom:8px">Lançou errado? Toque em <b>Desfazer</b> no pagamento errado e registre o certo.</div>' : '') +
+      listaPagos + formulario + '<div class="erro" id="eerro"></div><div class="acoes">' + botoes + '</div>');
+
+    document.querySelectorAll('[data-desfazer]').forEach((b) => b.onclick = async () => {
+      if (!confirm('Desfazer este pagamento? Ele sai do pedido e do caixa.')) return;
+      await enviar('/itens/' + i.id + '/pagamento/' + b.dataset.desfazer + '/desfazer', new FormData(), b, (j) => {
+        toast('Pagamento desfeito.' + (j.falta > 0 ? ' Falta ' + moeda(j.falta) + '.' : ''));
+        abrirEntregar(itens.find((x) => x.id === i.id), editar);
+      });
+    });
 
     if (i.falta > 0) {
       const atual = () => {
@@ -286,9 +310,9 @@
             '<div class="linha"><span>Taxa ' + t.toFixed(2).replace('.', ',') + '% · loja recebe</span><span>' + moeda(liq) + '</span></div>' +
             '<button class="btn btn-sec" style="width:100%;margin-top:6px;padding:8px" id="usarSug">Usar ' + moeda(sugerido) + '</button>';
           $('#usarSug').onclick = () => { $('#ev').value = String(sugerido).replace('.', ','); atual(); };
-          $('#eobs').textContent = liq > i.falta + 1 ? 'Sobra ' + moeda(liq - i.falta) + ' → fica de saldo para o cliente.' : (liq + 0.01 < i.falta - 1 ? 'Falta ' + moeda(i.falta - liq) + ' → fica em aberto no pedido.' : '');
+          $('#eobs').textContent = liq > i.falta + 1 ? 'Sobra ' + moeda(liq - i.falta) + ' → fica de saldo para o cliente.' : (liq + 0.01 < i.falta - 1 ? 'Falta ' + moeda(i.falta - liq) + ' → receba o resto de outro jeito ou fica em aberto.' : '');
         } else if (st.forma) {
-          $('#eobs').textContent = v > i.falta + 0.99 ? 'Sobra ' + moeda(v - i.falta) + ' → fica de saldo para o cliente.' : (v + 0.009 < i.falta ? 'Falta ' + moeda(i.falta - v) + ' → fica em aberto no pedido.' : '');
+          $('#eobs').textContent = v > i.falta + 0.99 ? 'Sobra ' + moeda(v - i.falta) + ' → fica de saldo para o cliente.' : (v + 0.009 < i.falta ? 'Falta ' + moeda(i.falta - v) + ' → receba o resto de outro jeito ou fica em aberto.' : '');
         }
       };
       document.querySelectorAll('#formas .opc').forEach((b) => b.onclick = () => {
@@ -310,21 +334,41 @@
       });
     }
 
-    $('#econf').onclick = async () => {
-      const fd = new FormData();
+    // monta o pagamento do formulário; null = erro já mostrado
+    const montar = async (fd) => {
+      if (!st.forma) { $('#eerro').textContent = 'Escolha como o cliente pagou.'; return null; }
+      const v = lerValor($('#ev').value);
+      if (!(v > 0)) { $('#eerro').textContent = 'Informe o valor recebido.'; return null; }
+      if ((st.forma !== 'dinheiro') && !st.foto) { $('#eerro').textContent = 'Tire a foto do comprovante.'; return null; }
+      fd.append('forma', st.forma); fd.append('valor', String(v));
+      if (st.forma === 'credito' || st.forma === 'debito') { fd.append('bandeira', $('#eb').value); fd.append('parcelas', st.forma === 'debito' ? '1' : $('#ep').value); }
+      if (st.foto) fd.append('foto', await reduzir(st.foto), 'comprovante.jpg');
+      return fd;
+    };
+
+    if ($('#eparcial')) $('#eparcial').onclick = async () => {
+      const fd = await montar(new FormData());
+      if (!fd) return;
+      await enviar('/itens/' + i.id + '/pagamento', fd, $('#eparcial'), (j) => {
+        toast(j.saldo > 0 ? 'Pagamento registrado. ' + moeda(j.saldo) + ' ficou de saldo do cliente.' : (j.falta > 0 ? 'Registrado. Falta ' + moeda(j.falta) + '.' : 'Pagamento registrado. Pedido quitado!'));
+        abrirEntregar(itens.find((x) => x.id === i.id), editar);
+      });
+    };
+
+    if ($('#econf')) $('#econf').onclick = async () => {
+      let fd = new FormData();
       const sem = i.falta > 0 && $('#esem').checked;
       if (i.falta > 0 && !sem) {
-        if (!st.forma) return ($('#eerro').textContent = 'Escolha como o cliente pagou.');
-        const v = lerValor($('#ev').value);
-        if (!(v > 0)) return ($('#eerro').textContent = 'Informe o valor recebido.');
-        if ((st.forma !== 'dinheiro') && !st.foto) return ($('#eerro').textContent = 'Tire a foto do comprovante.');
-        fd.append('forma', st.forma); fd.append('valor', String(v));
-        if (st.forma === 'credito' || st.forma === 'debito') { fd.append('bandeira', $('#eb').value); fd.append('parcelas', st.forma === 'debito' ? '1' : $('#ep').value); }
-        if (st.foto) fd.append('foto', await reduzir(st.foto), 'comprovante.jpg');
+        fd = await montar(fd);
+        if (!fd) return;
+      } else if (sem && st.forma && lerValor($('#ev').value) > 0) {
+        // recebeu uma parte agora e o resto fica para depois
+        fd = await montar(fd);
+        if (!fd) return;
       }
       if (sem) fd.append('sem_pagamento', '1');
       await enviar('/itens/' + i.id + '/entregar', fd, $('#econf'), (j) => {
-        toast(j.saldo > 0 ? 'Entrega confirmada. ' + moeda(j.saldo) + ' ficou de saldo do cliente.' : (j.falta > 0 && !sem ? 'Entrega confirmada. Ficou faltando ' + moeda(j.falta) + '.' : 'Entrega confirmada!'));
+        toast(j.saldo > 0 ? 'Entrega confirmada. ' + moeda(j.saldo) + ' ficou de saldo do cliente.' : (j.falta > 0 ? 'Entrega confirmada. Ficou faltando ' + moeda(j.falta) + '.' : 'Entrega confirmada!'));
       });
     };
   }
@@ -373,8 +417,9 @@
   }
 
   document.addEventListener('click', (e) => {
-    const a = e.target.closest('[data-entregar]'), o = e.target.closest('[data-ocorrencia]');
+    const a = e.target.closest('[data-entregar]'), o = e.target.closest('[data-ocorrencia]'), ed = e.target.closest('[data-editar]');
     if (a) abrirEntregar(itens.find((i) => i.id === +a.dataset.entregar));
+    if (ed) abrirEntregar(itens.find((i) => i.id === +ed.dataset.editar), true);
     if (o) abrirOcorrencia(itens.find((i) => i.id === +o.dataset.ocorrencia));
   });
 

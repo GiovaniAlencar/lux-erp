@@ -51,6 +51,8 @@ Route::group(['prefix' => 'motoboy', 'middleware' => 'throttle:90,1'], function 
     Route::get('/{token}/dados', 'MotoboyController@dados')->name('motoboy.dados');
     Route::post('/{token}/itens/{item}/entregar', 'MotoboyController@entregar')->whereNumber('item')->name('motoboy.entregar');
     Route::post('/{token}/itens/{item}/ocorrencia', 'MotoboyController@ocorrencia')->whereNumber('item')->name('motoboy.ocorrencia');
+    Route::post('/{token}/itens/{item}/pagamento', 'MotoboyController@pagamento')->whereNumber('item')->name('motoboy.pagamento');
+    Route::post('/{token}/itens/{item}/pagamento/{comprovante}/desfazer', 'MotoboyController@desfazerPagamento')->whereNumber('item')->whereNumber('comprovante')->name('motoboy.pagamento.desfazer');
 });
 
 Route::group(['prefix' => 'migrador'], function () {
@@ -617,6 +619,31 @@ Route::middleware([
         Route::post('/{id}/entrada', 'CompraPedidoController@entrada')->whereNumber('id')->name('entrada');
         Route::post('/{id}/pendencias', 'CompraPedidoController@pendencia')->whereNumber('id')->name('pendencia');
         Route::post('/{id}/pendencias/{pend}/resolver', 'CompraPedidoController@resolverPendencia')->whereNumber('id')->name('pendencia.resolver');
+    });
+
+    // Motoboys cadastrados e acerto do frete (SQL 39)
+    Route::group(['prefix' => 'entregadores', 'as' => 'entregadores.'], function () {
+        Route::get('/', 'MotoboyCadastroController@index')->name('index');
+        Route::post('/', 'MotoboyCadastroController@salvar')->name('salvar');
+        Route::post('/gerar-acertos', 'MotoboyCadastroController@gerarPendentes')->name('gerar');
+        Route::get('/acertos/{id}', 'MotoboyCadastroController@acerto')->whereNumber('id')->name('acerto');
+        Route::post('/acertos/{id}/extras', 'MotoboyCadastroController@extras')->whereNumber('id')->name('extras');
+        Route::post('/acertos/{id}/pagar', 'MotoboyCadastroController@pagar')->whereNumber('id')->name('pagar');
+    });
+
+    // CRM LUX (fase 2: monta e confere a fila; o envio entra na fase 4)
+    Route::group(['prefix' => 'crm', 'as' => 'crm.'], function () {
+        Route::get('/', 'CrmController@index')->name('index');
+        Route::get('/fila', 'CrmController@fila')->name('fila');
+        Route::post('/fila/gerar', 'CrmController@gerar')->name('fila.gerar');
+        Route::post('/fila/aprovar', 'CrmController@aprovar')->name('fila.aprovar');
+        Route::post('/envios/{id}/texto', 'CrmController@texto')->whereNumber('id')->name('envio.texto');
+        Route::post('/envios/{id}/cancelar', 'CrmController@cancelar')->whereNumber('id')->name('envio.cancelar');
+        Route::get('/historico', 'CrmController@historico')->name('historico');
+        Route::post('/bloquear', 'CrmController@bloquear')->name('bloquear');
+        Route::post('/bloqueios/{id}/liberar', 'CrmController@desbloquear')->whereNumber('id')->name('desbloquear');
+        Route::get('/configuracoes', 'CrmController@config')->name('config');
+        Route::post('/configuracoes', 'CrmController@salvarConfig')->name('config.salvar');
     });
 
     Route::group(['prefix' => 'financeiro-lux'], function () {

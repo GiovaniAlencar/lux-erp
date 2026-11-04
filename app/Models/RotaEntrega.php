@@ -13,6 +13,8 @@ class RotaEntrega extends Model
         'usuario_id',
         'status',
         'motoboy_nome',
+        'entregador_id',
+        'acerto_id',
         'motoboy_pago',
         'motoboy_pago_em',
         'motoboy_pago_usuario_id',
@@ -41,6 +43,16 @@ class RotaEntrega extends Model
     public function motoboyPagoPor()
     {
         return $this->belongsTo(Usuario::class, 'motoboy_pago_usuario_id');
+    }
+
+    public function motoboy()
+    {
+        return $this->belongsTo(Entregador::class, 'entregador_id');
+    }
+
+    public function acerto()
+    {
+        return $this->belongsTo(EntregadorAcerto::class, 'acerto_id');
     }
 
     public function itens()

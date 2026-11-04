@@ -127,6 +127,43 @@ class RegistroRecebimento
         });
     }
 
+    /**
+     * Desfaz um recebimento registrado por engano (ex.: o motoboy lançou dinheiro e o cliente pagou no cartão):
+     * tira a entrada do extrato, desfaz o saldo do cliente que ele gerou, apaga o comprovante e recalcula a venda.
+     */
+    public static function desfazer(VendaComprovante $c, string $motivo, ?int $usuarioId = null): void
+    {
+        $arquivo = (string) $c->arquivo;
+        DB::transaction(function () use ($c, $motivo, $usuarioId) {
+            $v = Venda::whereKey($c->venda_id)->lockForUpdate()->firstOrFail();
+            if ($c->fin_movimento_id && ($mov = FinMovimento::where('empresa_id', $c->empresa_id)->find($c->fin_movimento_id))) {
+                Financeiro::estornar($mov);
+            }
+            SaldoCliente::desfazerDoComprovante($c->id);
+            $valor = $c->valor;
+            $c->delete();
+            VendaComprovanteController::recalcularStatusVenda($v);
+            RecebimentoVenda::sincronizar($v, true);
+            try {
+                VendaAuditoria::create([
+                    'empresa_id' => $v->empresa_id,
+                    'venda_id' => $v->id,
+                    'usuario_id' => $usuarioId ?: null,
+                    'acao' => 'comprovante_excluido',
+                    'descricao' => mb_substr('Recebimento desfeito' . ($valor ? ' (R$ ' . __moeda($valor) . ')' : '') . ': ' . $motivo, 0, 512),
+                ]);
+            } catch (\Throwable $e) {
+                // auditoria nunca impede
+            }
+        });
+        if ($arquivo !== '') {
+            try {
+                \Storage::disk('local')->delete($arquivo);
+            } catch (\Throwable $e) {
+            }
+        }
+    }
+
     /** Manda o comprovante para o grupo do WhatsApp quando é da conta configurada (fora da transação). */
     public static function enviarGrupo(VendaComprovante $c, ?FinConta $conta): void
     {

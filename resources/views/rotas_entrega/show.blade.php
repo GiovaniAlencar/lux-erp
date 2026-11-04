@@ -298,7 +298,13 @@
                         </div>
                         @endif
                     </div>
-                    @if($rota->podeRegistrarPagamentoMotoboy())
+                    @if(!empty($rota->acerto_id) && $rota->acerto)
+                    <div class="ms-auto">
+                        <a href="{{ route('entregadores.acerto', $rota->acerto_id) }}" class="rota-btn rota-btn-ghost">
+                            <i class="bi bi-receipt"></i> Acerto {{ $rota->acerto->tipo === 'diario' ? 'do dia' : 'da semana' }} · vence {{ $rota->acerto->vencimento->format('d/m') }}
+                        </a>
+                    </div>
+                    @elseif($rota->podeRegistrarPagamentoMotoboy())
                     <div class="ms-auto">
                         @if(!$rota->motoboy_pago)
                         <form action="{{ route('rotas-entrega.pagar-motoboy', $rota->id) }}" method="post" class="d-inline m-0" onsubmit="return confirm('Confirmar que pagou R$ {{ __moeda($rota->totalFrete()) }} ao motoboy desta rota?');">
@@ -393,9 +399,26 @@
             <div class="row g-3 align-items-end">
                 <div class="col-md-6 col-lg-4">
                     <label class="rota-field-label" for="inp-motoboy">Motoboy responsável</label>
+                    @php
+                        $__motoboys = \App\Services\AcertoMotoboy::ativo()
+                            ? \App\Models\Entregador::where('empresa_id', $rota->empresa_id)->where(fn ($q) => $q->where('ativo', 1)->orWhere('id', $rota->entregador_id))->orderBy('nome')->get()
+                            : collect();
+                    @endphp
+                    @if($__motoboys->isNotEmpty())
+                        <select id="inp-motoboy" name="entregador_id" class="form-select" {{ $editavel ? '' : 'disabled' }}>
+                            <option value="">— escolha o motoboy —</option>
+                            @foreach($__motoboys as $__mb)
+                                <option value="{{ $__mb->id }}" @selected((int) old('entregador_id', $rota->entregador_id) === $__mb->id)>{{ $__mb->nome }} ({{ $__mb->acerto === 'diario' ? 'avulso' : 'semanal' }})</option>
+                            @endforeach
+                        </select>
+                        <input type="hidden" name="motoboy_nome" value="{{ $rota->motoboy_nome }}">
+                        <div class="small rota-hint mt-1"><a href="{{ route('entregadores.index') }}" target="_blank">Cadastrar motoboy / ver acertos</a></div>
+                    @else
                     <input type="text" id="inp-motoboy" name="motoboy_nome" class="form-control" placeholder="Nome do motoboy"
                         value="{{ old('motoboy_nome', $rota->motoboy_nome) }}"
                         {{ $editavel ? '' : 'readonly' }}>
+                        @if(\App\Services\AcertoMotoboy::ativo())<div class="small rota-hint mt-1"><a href="{{ route('entregadores.index') }}" target="_blank">Cadastre os motoboys</a> para o frete virar conta a pagar sozinho.</div>@endif
+                    @endif
                 </div>
             </div>
         </div>
