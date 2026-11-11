@@ -18,7 +18,10 @@ class Kernel extends ConsoleKernel
         $schedule->command('ecommerce:expire-orders')->everyFifteenMinutes();
         $schedule->command('notificacoes:enviar')->everyMinute()->withoutOverlapping(10);
         $schedule->command('whatsapp:comprovantes')->everyMinute()->withoutOverlapping(10);
-        $schedule->command('whatsapp:clientes')->everyMinute()->withoutOverlapping(10);
+        // Avisos aos clientes pelo número do atendimento: UM por minuto (antes eram até 20
+        // de 1,5 em 1,5 s — uma rota com 13 clientes saía em 26 s). Rajada de mensagens
+        // iguais por cliente não oficial é sinal de spam para o WhatsApp (11/11/2026).
+        $schedule->command('whatsapp:clientes --limite=1')->everyMinute()->withoutOverlapping(10);
         $schedule->command('rotas:geocodificar')->everyMinute()->withoutOverlapping(10);
         $schedule->command('crm:processar')->everyMinute()->withoutOverlapping(10);
     }
