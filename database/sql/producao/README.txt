@@ -36,6 +36,7 @@ Ordem sugerida:
 33) 37_crm.sql (CRM LUX: campanhas, fila de contatos, histórico, bloqueios; nesta fase não envia nada)
 34) 38_motoboy_varios_pagamentos.sql (motoboy: mais de um pagamento por entrega e correção depois de concluída; requer 32)
 35) 39_motoboys_acertos.sql (motoboys cadastrados e acerto do frete: conta a pagar semanal ou no dia, extras como despesa; requer 26 e 29)
+36) 40_categoria_nacionais.sql (categoria "Ciclo" vira "Nacionais" e recebe a Paris Elysees; só dados, sem mudar tabelas)
 
 Deploy completo (SQL + lista de arquivos FTP): ver DEPLOY_JUN2026.txt
 

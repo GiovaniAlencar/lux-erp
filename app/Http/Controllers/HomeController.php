@@ -31,8 +31,57 @@ class HomeController extends Controller
         });
     }
 
+    /** Administrador (ou super) vê valores; o resto da equipe vê o painel sem dinheiro. */
+    private function ehAdmin(): bool
+    {
+        $u = session('user_logged');
+        return (bool) (($u['adm'] ?? false) || !empty($u['super']));
+    }
+
+    /** Painel da equipe (11/11/2026): só quantidades e atalhos — nada de faturamento ou contas. */
+    private function painelEquipe()
+    {
+        $emp = $this->empresa_id;
+        $hoje = date('Y-m-d');
+        $desde = date('Y-m-d', strtotime('-30 days')); // pedidos parados há mais tempo não contam
+        $conta = function (callable $q) {
+            try {
+                return (int) $q();
+            } catch (\Throwable $e) {
+                return null; // tabela/coluna que não existe nesta base: o card some
+            }
+        };
+        $cards = [
+            ['Pedidos de hoje', $conta(fn () => \DB::table('vendas')->where('empresa_id', $emp)->whereDate('created_at', $hoje)->count()),
+                'bx bx-cart-alt', 'bg-gradient-burning', route('vendas.index')],
+            ['Aguardando confirmação', $conta(fn () => \DB::table('vendas')->where('empresa_id', $emp)->where('status_pedido', 'aguardando_confirmacao')->where('created_at', '>=', $desde)->count()),
+                'bx bx-time-five', 'bg-gradient-cosmic', route('vendas.index')],
+            ['Para separar', $conta(fn () => \DB::table('vendas')->where('empresa_id', $emp)->whereIn('status_pedido', ['confirmado', 'em_separacao'])->where('created_at', '>=', $desde)->count()),
+                'bx bx-package', 'bg-gradient-Ohhappiness', route('vendas.index')],
+            ['Rotas em andamento', $conta(fn () => \DB::table('rotas_entrega')->where('empresa_id', $emp)->where('status', 'em_rota')->count()),
+                'bx bx-cycling', 'bg-gradient-moonlit', route('rotas-entrega.index')],
+            ['Pedidos do site aguardando', $conta(fn () => \DB::table('ecommerce_orders')->where('status', 'aguardando_confirmacao')->count()),
+                'bx bx-globe', 'bg-gradient-burning', route('ecommerce-vendas.index')],
+        ];
+        $cards = array_values(array_filter($cards, fn ($c) => $c[1] !== null));
+        $atalhos = [
+            ['Nova venda', 'bx bx-plus-circle', route('vendas.create')],
+            ['Vendas', 'bx bx-list-ul', route('vendas.index')],
+            ['Pedidos do site', 'bx bx-globe', route('ecommerce-vendas.index')],
+            ['Rotas de entrega', 'bx bx-map', route('rotas-entrega.index')],
+            ['Clientes', 'bx bx-user', route('clientes.index')],
+            ['Produtos', 'bx bx-purchase-tag', route('produtos.index')],
+            ['Estoque', 'bx bx-box', route('estoque.index')],
+        ];
+        $nome = optional(Usuario::find(get_id_user()))->nome;
+        return view('default.inicio_equipe', compact('cards', 'atalhos', 'nome'));
+    }
+
     public function index()
     {
+        if (!$this->ehAdmin()) {
+            return $this->painelEquipe();
+        }
         $usuario = Usuario::find(get_id_user());
         $filial_id = $usuario->local_padrao;
         $dataFinal = date('d/m/Y');
@@ -105,6 +154,9 @@ class HomeController extends Controller
 
     public function faturamentoDosUltimosSeteDias()
     {
+        if (!$this->ehAdmin()) {
+            return response()->json([], 403);
+        }
         $arrayVendas = [];
         for ($aux = 0; $aux > -7; $aux--) {
             $vendas = Venda::select(\DB::raw('sum(valor_total) as total'))
@@ -142,6 +194,9 @@ class HomeController extends Controller
 
     public function faturamentoFiltrado(Request $request)
     {
+        if (!$this->ehAdmin()) {
+            return response()->json([], 403);
+        }
         $dataInicial = strtotime(str_replace("/", "-", $request->data_inicial));
         $dataFinal = strtotime(str_replace("/", "-", $request->data_final));
         $diferenca = ($dataFinal - $dataInicial) / 86400; //86400 segundos do dia
@@ -293,6 +348,9 @@ class HomeController extends Controller
 
     public function boxConsulta($dias)
     {
+        if (!$this->ehAdmin()) {
+            return response()->json([], 403);
+        }
         $data = [
             'totalDeVendas' => $this->totalDeVendasDias($dias),
             'totalDePedidos' => $this->totalDePedidosDeDliveryDias($dias),
