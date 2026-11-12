@@ -5,6 +5,7 @@
     $tierInicial = $tabela_aplicada ?? PrecoCategoriaVenda::TIER_NORMAL;
     $tierLabel = PrecoCategoriaVenda::labelTier($tierInicial);
     $badgeClass = PrecoCategoriaVenda::badgeClassTier($tierInicial);
+    $promo = PrecoCategoriaVenda::promocoesVigentes([$product->id])[$product->id] ?? null;
 @endphp
 <tr class="tr_{{ $rand }} linha-item-venda"
     data-produto-id="{{ $product->id }}"
@@ -18,6 +19,7 @@
         <input type="hidden" class="inp-preco-normal" value="{{ $precoNormal }}">
         <input type="hidden" class="inp-preco-atacado-1" value="{{ $precoAtacado1 }}">
         <input type="hidden" class="inp-preco-atacado-2" value="{{ $precoAtacado2 }}">
+        <input type="hidden" class="inp-preco-promo" value="{{ $promo['preco'] ?? '' }}" data-ate="{{ isset($promo['ate']) ? \Carbon\Carbon::parse($promo['ate'])->format('d/m') : '' }}">
         <div class="mt-1 small linha-tabela-preco-info">
             @if($grupoPreco)
             <span class="badge rounded-pill {{ $badgeClass }} badge-tabela-aplicada">{{ $tierLabel }}</span>

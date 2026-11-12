@@ -5,6 +5,8 @@
     [$precoNormal, $precoAtacado1, $precoAtacado2] = $product ? PrecoCategoriaVenda::precosDoProduto($product) : [0, 0, 0];
     $tierLabel = 'Normal';
     $badgeClass = PrecoCategoriaVenda::badgeClassTier(PrecoCategoriaVenda::TIER_NORMAL);
+    // promoção que valia na data do pedido (mesma regra do salvar)
+    $promo = $product ? (PrecoCategoriaVenda::promocoesVigentes([$product->id], optional(optional($productItem->venda)->created_at)->toDateTimeString())[$product->id] ?? null) : null;
 @endphp
 <tr class="tr_{{ $rand }} linha-item-venda"
     data-produto-id="{{ $productItem->produto_id }}"
@@ -19,6 +21,7 @@
         <input type="hidden" class="inp-preco-normal" value="{{ $precoNormal }}">
         <input type="hidden" class="inp-preco-atacado-1" value="{{ $precoAtacado1 }}">
         <input type="hidden" class="inp-preco-atacado-2" value="{{ $precoAtacado2 }}">
+        <input type="hidden" class="inp-preco-promo" value="{{ $promo['preco'] ?? '' }}" data-ate="{{ isset($promo['ate']) ? \Carbon\Carbon::parse($promo['ate'])->format('d/m') : '' }}">
         @if($grupoPreco)
         <div class="mt-1 small linha-tabela-preco-info">
             <span class="badge rounded-pill {{ $badgeClass }} badge-tabela-aplicada">{{ $tierLabel }}</span>

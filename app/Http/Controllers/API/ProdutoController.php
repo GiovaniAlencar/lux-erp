@@ -182,6 +182,9 @@ class ProdutoController extends Controller
             $item->preco_normal = $pn;
             $item->preco_atacado_1 = $pa1;
             $item->preco_atacado_2 = $pa2;
+            $promo = \App\Helpers\PrecoCategoriaVenda::promocoesVigentes([$item->id])[$item->id] ?? null;
+            $item->preco_promocao = $promo['preco'] ?? null;
+            $item->promocao_ate = $promo['ate'] ?? null;
         }
 
         return response()->json($item, 200);

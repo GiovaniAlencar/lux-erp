@@ -606,7 +606,7 @@ class VendaController extends Controller
     /**
      * Recalcula valor_unitario[] e subtotal_item[] conforme tabela de preço por categoria.
      */
-    private function sincronizarPrecosTabelaCategoria(Request $request): void
+    private function sincronizarPrecosTabelaCategoria(Request $request, ?string $dataRefPromocao = null): void
     {
         if (!is_array($request->produto_id) || count($request->produto_id) === 0) {
             return;
@@ -622,7 +622,8 @@ class VendaController extends Controller
             $request->produto_id,
             $request->quantidade,
             $modos,
-            $categorias
+            $categorias,
+            $dataRefPromocao
         );
 
         $valorUnitario = $request->valor_unitario ?? [];
@@ -752,7 +753,8 @@ class VendaController extends Controller
                         'frete' => (float)$item->frete,
                     ];
                     $natureza = NaturezaOperacao::findOrFail($request->natureza_id);
-                    $this->sincronizarPrecosTabelaCategoria($request);
+                    // promoção: vale a que cobria a data do pedido (não muda o preço ao editar depois)
+                    $this->sincronizarPrecosTabelaCategoria($request, (string) $item->created_at);
                     $valor_total = $this->somaItens($request);
                     $frete_id = null;
                     $freteAux = $item->frete;

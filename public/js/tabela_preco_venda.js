@@ -171,7 +171,12 @@
         return totais;
     }
 
-    function atualizarBadgeLinha($tr, tier) {
+    /** Preço promocional da linha (Vendas › Promoções), ou 0 se não tem. */
+    function promoDaLinha($tr) {
+        return parseFloat($tr.find('.inp-preco-promo').val() || '0') || 0;
+    }
+
+    function atualizarBadgeLinha($tr, tier, emPromo) {
         const label = TIER_LABEL[tier] || 'Normal';
         const cls = TIER_BADGE[tier] || TIER_BADGE.normal;
         let $info = $tr.find('.linha-tabela-preco-info');
@@ -179,8 +184,12 @@
             $info = $('<div class="mt-1 small linha-tabela-preco-info"></div>');
             $tr.find('td').eq(1).append($info);
         }
-        const novoHtml = '<span class="badge rounded-pill ' + cls + ' badge-tabela-aplicada">' + label + '</span>' +
-            '<span class="text-muted ms-1">Tabela: ' + label + '</span>';
+        const ate = $tr.find('.inp-preco-promo').data('ate');
+        const novoHtml = emPromo
+            ? '<span class="badge rounded-pill bg-danger badge-tabela-aplicada">Promoção</span>' +
+              '<span class="text-danger ms-1 fw-semibold">Produto em promoção' + (ate ? ' até ' + ate : '') + '</span>'
+            : '<span class="badge rounded-pill ' + cls + ' badge-tabela-aplicada">' + label + '</span>' +
+              '<span class="text-muted ms-1">Tabela: ' + label + '</span>';
         // só reescreve se mudou: reescrever sempre disparava o observador da tabela em loop (a cada 80 ms)
         if ($info.html() !== novoHtml) {
             $info.html(novoHtml);
@@ -272,17 +281,38 @@
 
         linhas.forEach(function (l) {
             const tier = tierPorGrupo[l.grupo] || 'normal';
-            const preco = precoPorTier(l.$tr, tier);
+            let preco = precoPorTier(l.$tr, tier);
+            // promoção vale em qualquer quantidade quando for o menor preço (mesma regra do servidor)
+            const promo = promoDaLinha(l.$tr);
+            const emPromo = promo > 0 && promo <= preco;
+            if (emPromo) preco = promo;
             const sub = preco * l.qtd;
             const vPreco = convertFloatToMoeda(preco), vSub = convertFloatToMoeda(sub);
             const $vu = l.$tr.find('.value_unit_row'), $st = l.$tr.find('.subtotal-item');
             if ($vu.val() !== vPreco) $vu.val(vPreco);
             if ($st.val() !== vSub) $st.val(vSub);
-            atualizarBadgeLinha(l.$tr, tier);
+            atualizarBadgeLinha(l.$tr, tier, emPromo);
         });
 
         if (typeof calcTotal === 'function') {
             calcTotal();
+        }
+    }
+
+    /** Aviso "Produto em promoção" embaixo do campo de valor, ao escolher o produto. */
+    function avisoPromocaoEntrada(produto, emPromo) {
+        const $campo = $('#inp-valor_unitario');
+        if (!$campo.length) return;
+        let $aviso = $('#aviso-promocao-entrada');
+        if (!$aviso.length) {
+            $aviso = $('<div id="aviso-promocao-entrada" class="small text-danger fw-semibold mt-1"></div>');
+            $campo.closest('div').append($aviso);
+        }
+        if (emPromo) {
+            const ate = produto.promocao_ate ? String(produto.promocao_ate).slice(0, 10).split('-').reverse().slice(0, 2).join('/') : '';
+            $aviso.text('Produto em promoção' + (ate ? ' até ' + ate : '')).show();
+        } else {
+            $aviso.hide();
         }
     }
 
@@ -295,6 +325,11 @@
         }
 
         if (!produto.grupo_preco) {
+            const promoSemGrupo = parseFloat(produto.preco_promocao || 0) || 0;
+            if (promoSemGrupo > 0 && promoSemGrupo < parseFloat(produto.valor_venda || 0)) {
+                produto = Object.assign({}, produto, { valor_venda: promoSemGrupo });
+            }
+            avisoPromocaoEntrada(produto, promoSemGrupo > 0);
             $('#inp-valor_unitario').val(convertFloatToMoeda(produto.valor_venda || 0));
             const q = qtdLinhaOpcional !== undefined
                 ? convertMoedaToFloat(qtdLinhaOpcional)
@@ -317,6 +352,9 @@
         let preco = parseFloat(produto.valor_venda || 0);
         if (tier === 'atacado_1') preco = parseFloat(produto.preco_atacado_1 || preco);
         if (tier === 'atacado_2') preco = parseFloat(produto.preco_atacado_2 || preco);
+        const promo = parseFloat(produto.preco_promocao || 0) || 0;
+        if (promo > 0 && promo <= preco) preco = promo;
+        avisoPromocaoEntrada(produto, promo > 0 && promo <= preco);
 
         $('#inp-valor_unitario').val(convertFloatToMoeda(preco));
         $('#inp-subtotal').val(convertFloatToMoeda(preco * (qtdAdd > 0 ? qtdAdd : 1)));

@@ -1147,6 +1147,11 @@ Route::middleware([
 
     Route::resource('codigoDesconto', 'CodigoDescontoController');
 
+    // promoções em lote (antes do resource, senão "lote" vira {id})
+    Route::get('promocoes/lote', 'PromocaoController@lote')->name('promocoes.lote');
+    Route::post('promocoes/lote', 'PromocaoController@lotePrevia')->name('promocoes.lote.previa');
+    Route::post('promocoes/lote/salvar', 'PromocaoController@loteSalvar')->name('promocoes.lote.salvar');
+    Route::post('promocoes/encerrar-campanha', 'PromocaoController@encerrarCampanha')->name('promocoes.campanha.encerrar');
     Route::resource('promocoes', 'PromocaoController');
 
     Route::resource('tamanhosPizza', 'TamanhoPizzaController');

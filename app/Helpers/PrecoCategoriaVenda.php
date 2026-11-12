@@ -200,6 +200,44 @@ class PrecoCategoriaVenda
         return self::tierAutomatico($grupo, $quantidadeTotal);
     }
 
+    /**
+     * Promoções do ERP (Vendas › Promoções) valendo para estes produtos.
+     * Sem $dataRef: as vigentes AGORA (ativa, no período, com unidades no limite).
+     * Com $dataRef (edição de uma venda antiga): as que cobriam aquela data — assim editar
+     * um pedido da Black Friday depois que ela acabou não muda o preço que o cliente pagou.
+     * @return array<int, array{id:int, preco:float, ate:string}> produto_id => promoção
+     */
+    public static function promocoesVigentes(array $produtoIds, ?string $dataRef = null): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $produtoIds))));
+        if (!$ids || !\Illuminate\Support\Facades\Schema::hasTable('promocoes')) {
+            return [];
+        }
+        $dia = $dataRef ? substr($dataRef, 0, 10) : now()->toDateString();
+        $q = \App\Models\Promocao::whereIn('produto_id', $ids)
+            ->where('data_inicio', '<=', $dia)
+            ->where('data_fim', '>=', $dia);
+        if (!$dataRef) {
+            $q->where('ativo', 1)->where(function ($w) {
+                $w->whereNull('quantidade_limite')->orWhereColumn('quantidade_utilizada', '<', 'quantidade_limite');
+            });
+        }
+        $promos = $q->orderByDesc('id')->get();
+        $base = Produto::whereIn('id', $ids)->pluck('valor_venda', 'id');
+        $out = [];
+        foreach ($promos as $p) {
+            $pid = (int) $p->produto_id;
+            if (isset($out[$pid]) || !isset($base[$pid])) {
+                continue; // a mais recente vence (igual ao site)
+            }
+            $preco = round($p->precoPromocional((float) $base[$pid]), 2);
+            if ($preco > 0 && $preco < (float) $base[$pid]) {
+                $out[$pid] = ['id' => (int) $p->id, 'preco' => $preco, 'ate' => (string) $p->data_fim];
+            }
+        }
+        return $out;
+    }
+
     public static function precoPorTier(Produto $produto, string $tier): float
     {
         [$normal, $a1, $a2] = self::precosDoProduto($produto);
@@ -257,8 +295,10 @@ class PrecoCategoriaVenda
         array $produtoIds,
         array $quantidades,
         array $modosPorGrupo,
-        ?Collection $categorias = null
+        ?Collection $categorias = null,
+        ?string $dataRefPromocao = null
     ): array {
+        $promos = self::promocoesVigentes($produtoIds, $dataRefPromocao);
         $produtos = Produto::whereIn('id', array_unique(array_map('intval', $produtoIds)))->get()->keyBy('id');
 
         $qtdPorGrupo = [];
@@ -294,10 +334,14 @@ class PrecoCategoriaVenda
             $grupo = $grupoPorIndice[$i] ?? null;
             if ($grupo === null) {
                 $valores[$i] = (float) $produto->valor_venda;
-                continue;
+            } else {
+                $tier = $tierPorGrupo[$grupo] ?? self::TIER_NORMAL;
+                $valores[$i] = self::precoPorTier($produto, $tier);
             }
-            $tier = $tierPorGrupo[$grupo] ?? self::TIER_NORMAL;
-            $valores[$i] = self::precoPorTier($produto, $tier);
+            // promoção vale em qualquer quantidade quando for o menor preço
+            if (isset($promos[$pid]) && $promos[$pid]['preco'] <= $valores[$i]) {
+                $valores[$i] = $promos[$pid]['preco'];
+            }
         }
 
         return $valores;
